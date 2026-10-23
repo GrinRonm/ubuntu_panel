@@ -1,0 +1,1535 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ServerDeck — Управление сервером</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2306b6d4'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
+</head>
+<body>
+
+  <!-- Login Screen -->
+  <div id="login-screen" class="login-wrap" style="display: none;">
+    <div class="login-card">
+      <div style="text-align: center; margin-bottom: 24px;">
+        <div class="logo-badge" style="width: 48px; height: 48px; margin: 0 auto 12px; font-size: 1.5rem;">⚡</div>
+        <h1 style="font-size: 1.5rem; font-weight: 800; letter-spacing: -0.02em;">ServerDeck</h1>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 4px;">GrinRonn Home Server</p>
+      </div>
+      <form id="login-form">
+        <div class="form-group">
+          <label class="form-label">Пользователь</label>
+          <input type="text" id="login-username" class="form-input" value="grinronn" required autofocus>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Пароль</label>
+          <input type="password" id="login-password" class="form-input" required>
+        </div>
+        <div id="login-error" style="color: var(--accent-rose); font-size: 0.85rem; margin-bottom: 12px; display: none;"></div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 12px;">
+          Войти в панель
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Main App Shell -->
+  <div id="app" style="display: none;">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="logo-badge">⚡</div>
+        <div>
+          <div class="logo-title">ServerDeck</div>
+          <div class="logo-subtitle">Home Server</div>
+        </div>
+      </div>
+      
+      <ul class="nav-links">
+        <li class="nav-item active" data-tab="dashboard">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/></svg>
+          Дашборд
+        </li>
+        <li class="nav-item" data-tab="nginx">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9"/></svg>
+          Nginx Сайты
+        </li>
+        <li class="nav-item" data-tab="ssl">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          SSL Сертификаты
+        </li>
+        <li class="nav-item" data-tab="network">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+          Сеть & Фаервол
+        </li>
+        <li class="nav-item" data-tab="smart">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7c0-2-1-3-3-3H7C5 4 4 5 4 7zm4 4h8m-8 4h5"/></svg>
+          S.M.A.R.T. & Диски
+        </li>
+        <li class="nav-item" data-tab="cron">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+          Планировщик (Cron)
+        </li>
+        <li class="nav-item" data-tab="samba">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 00-9.78 2.096A4.001 4.001 0 003 15z"/></svg>
+          Samba (SMB)
+        </li>
+        <li class="nav-item" data-tab="ftp">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M9 19l3 3m0 0l3-3m-3 3V10"/></svg>
+          FTP Сервер
+        </li>
+
+        <li class="nav-item" data-tab="services">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"/></svg>
+          Службы & Docker
+        </li>
+        <li class="nav-item" data-tab="processes">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+          Процессы (htop)
+        </li>
+        <li class="nav-item" data-tab="files">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"/></svg>
+          Файлы
+        </li>
+        <li class="nav-item" data-tab="users">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"/></svg>
+          Пользователи
+        </li>
+        <li class="nav-item" data-tab="logs">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+          Журнал & Логи
+        </li>
+        <li class="nav-item" data-tab="terminal">
+          <svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 9l3 3-3 3m5 0h3M5 20h14a2 2 0 002-2V6a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+          Web Терминал
+        </li>
+      </ul>
+
+      <div class="sidebar-footer">
+        <div class="user-pill">
+          <div class="avatar" id="user-avatar">G</div>
+          <div>
+            <div class="username" id="display-username">grinronn</div>
+            <div style="font-size: 0.7rem; color: var(--accent-emerald);">В сети</div>
+          </div>
+        </div>
+        <button id="btn-logout" class="btn-logout" title="Выйти">
+          <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="main-content">
+      <header class="top-bar">
+        <div style="display: flex; align-items: center; gap: 16px;">
+          <h2 class="page-title" id="page-heading">Дашборд</h2>
+          <div class="badge badge-active" id="beget-badge" title="Синхронизация доменов в Beget">
+            <span class="badge-dot"></span> Beget DDNS
+          </div>
+        </div>
+        <div class="top-actions">
+          <button id="btn-quick-test-nginx" class="btn btn-secondary btn-sm" title="Проверить nginx -t">
+            ✓ Тест Nginx
+          </button>
+          <button id="btn-quick-reload-nginx" class="btn btn-primary btn-sm" title="Перезагрузить Nginx">
+            ⟳ Перезагрузить Nginx
+          </button>
+        </div>
+      </header>
+
+      <!-- Content Views -->
+      <div class="content-body">
+        
+        <!-- Tab: Dashboard -->
+        <div id="view-dashboard" class="tab-view">
+          <div class="grid-stats">
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Процессор (CPU)</span>
+                <div class="stat-icon icon-cpu">⚡</div>
+              </div>
+              <div class="stat-value"><span id="cpu-val">0</span><span class="stat-unit">%</span></div>
+              <div class="progress-track">
+                <div id="cpu-bar" class="progress-fill fill-cpu" style="width: 0%;"></div>
+              </div>
+              <div class="stat-subtext">
+                <span id="cpu-cores-text">Ядер: 4</span>
+                <span id="load-avg-text">Загрузка: 0.12, 0.08, 0.05</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Память (RAM)</span>
+                <div class="stat-icon icon-ram">💾</div>
+              </div>
+              <div class="stat-value"><span id="ram-val">0</span><span class="stat-unit">%</span></div>
+              <div class="progress-track">
+                <div id="ram-bar" class="progress-fill fill-ram" style="width: 0%;"></div>
+              </div>
+              <div class="stat-subtext">
+                <span id="ram-used-text">0 GB из 0 GB</span>
+                <span id="ram-free-text">Свободно: 0 GB</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Диск (Система /)</span>
+                <div class="stat-icon icon-disk">💽</div>
+              </div>
+              <div class="stat-value"><span id="disk-val">0</span><span class="stat-unit">%</span></div>
+              <div class="progress-track">
+                <div id="disk-bar" class="progress-fill fill-disk" style="width: 0%;"></div>
+              </div>
+              <div class="stat-subtext">
+                <span id="disk-used-text">0 GB из 0 GB</span>
+                <span id="disk-free-text">Свободно: 0 GB</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Сеть (Скорость)</span>
+                <div class="stat-icon icon-net">🌐</div>
+              </div>
+              <div class="stat-value"><span id="net-speed-val">0</span><span class="stat-unit">KB/s</span></div>
+              <div class="progress-track">
+                <div id="net-bar" class="progress-fill fill-net" style="width: 25%;"></div>
+              </div>
+              <div class="stat-subtext">
+                <span id="net-rx-text">↓ 0 KB/s</span>
+                <span id="net-tx-text">↑ 0 KB/s</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- History Chart Card -->
+          <div class="card chart-card">
+            <div class="chart-header">
+              <div style="display: flex; align-items: center; gap: 14px;">
+                <h3 style="font-size: 1rem; font-weight: 700;">История нагрузки (CPU, RAM, Сеть)</h3>
+                <div style="display: flex; gap: 12px; font-size: 0.78rem;">
+                  <span style="color: var(--accent-indigo); font-weight: 600;">■ CPU %</span>
+                  <span style="color: var(--accent-cyan); font-weight: 600;">■ RAM %</span>
+                  <span style="color: var(--accent-amber); font-weight: 600;">■ Сеть (KB/s)</span>
+                </div>
+              </div>
+              <div class="chart-tabs">
+                <button class="chart-tab-btn" data-range="15m" onclick="app.setHistoryRange('15m')">15 мин</button>
+                <button class="chart-tab-btn active" data-range="1h" onclick="app.setHistoryRange('1h')">1 час</button>
+                <button class="chart-tab-btn" data-range="6h" onclick="app.setHistoryRange('6h')">6 часов</button>
+                <button class="chart-tab-btn" data-range="24h" onclick="app.setHistoryRange('24h')">24 часа</button>
+              </div>
+            </div>
+            <div style="position: relative; width: 100%; height: 180px;">
+              <canvas id="metrics-canvas"></canvas>
+            </div>
+          </div>
+
+          <!-- Disks Breakdown & System Info -->
+          <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+            <div class="card">
+              <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 16px;">Файловые хранилища и диски</h3>
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Точка монтирования</th>
+                      <th>Файловая система</th>
+                      <th>Занято</th>
+                      <th>Всего</th>
+                      <th>Статус</th>
+                    </tr>
+                  </thead>
+                  <tbody id="disks-table-body">
+                    <!-- Populated by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3 style="font-size: 1rem; font-weight: 700; margin-bottom: 16px;">Параметры сервера</h3>
+              <div style="display: flex; flex-direction: column; gap: 12px; font-size: 0.88rem;">
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: var(--text-dim);">Хостнейм:</span>
+                  <span id="info-hostname" style="font-weight: 600;">-</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: var(--text-dim);">Ядро Linux:</span>
+                  <span id="info-kernel" style="font-weight: 600;">-</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: var(--text-dim);">Время работы (Uptime):</span>
+                  <span id="info-uptime" style="font-weight: 600;">-</span>
+                </div>
+                <div style="display: flex; justify-content: space-between;">
+                  <span style="color: var(--text-dim);">Beget DDNS:</span>
+                  <span id="info-beget" style="font-weight: 600; color: var(--accent-emerald);">Синхронизирован</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Nginx Sites -->
+        <div id="view-nginx" class="tab-view" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <p style="color: var(--text-muted); font-size: 0.9rem;">
+              Конфигурации сайтов из <code>/etc/nginx/sites-available/</code>. Включение/выключение создаёт симлинк в <code>sites-enabled/</code>.
+            </p>
+            <div style="display: flex; gap: 10px;">
+              <button id="btn-open-new-site-modal" class="btn btn-primary">
+                + Добавить сайт
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Файл конфига</th>
+                    <th>Домен(ы)</th>
+                    <th>Порты</th>
+                    <th>Направление (Proxy / Root)</th>
+                    <th>SSL</th>
+                    <th>Статус</th>
+                    <th style="text-align: right;">Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="nginx-sites-table-body">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Services & Docker -->
+        <div id="view-services" class="tab-view" style="display: none;">
+          <div style="margin-bottom: 28px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 12px;">
+              <h3 style="font-size: 1.1rem; font-weight: 700;">Системные службы (systemd)</h3>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <div class="chart-tabs">
+                  <button class="chart-tab-btn active" id="svc-filter-all" onclick="app.setServiceFilter('all')">Все</button>
+                  <button class="chart-tab-btn" id="svc-filter-active" onclick="app.setServiceFilter('active')">Запущенные</button>
+                  <button class="chart-tab-btn" id="svc-filter-enabled" onclick="app.setServiceFilter('enabled')">⚡ В автозапуске</button>
+                  <button class="chart-tab-btn" id="svc-filter-fav" onclick="app.setServiceFilter('fav')">⭐ Избранные</button>
+                </div>
+                <input type="text" id="service-search-input" class="form-input" placeholder="Поиск службы..." style="width: 200px; padding: 6px 12px; font-size: 0.85rem;">
+              </div>
+            </div>
+            <div class="card">
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th style="width: 40px;">⭐</th>
+                      <th>Служба</th>
+                      <th>Автозапуск</th>
+                      <th>Состояние</th>
+                      <th>Описание</th>
+                      <th style="text-align: right;">Управление</th>
+                    </tr>
+                  </thead>
+                  <tbody id="systemd-table-body">
+                    <!-- Populated by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <h3 style="font-size: 1.1rem; font-weight: 700; margin-bottom: 14px;">Контейнеры Docker</h3>
+            <div class="card">
+              <div class="table-container">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Имя контейнера</th>
+                      <th>Образ</th>
+                      <th>Порты</th>
+                      <th>Статус</th>
+                      <th style="text-align: right;">Управление</th>
+                    </tr>
+                  </thead>
+                  <tbody id="docker-table-body">
+                    <!-- Populated by JS -->
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Processes (htop) -->
+        <div id="view-processes" class="tab-view" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <p style="color: var(--text-muted); font-size: 0.9rem;">
+              Активные процессы сервера, потребляющие ресурсы процессора и оперативной памяти.
+            </p>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <span style="font-size: 0.82rem; color: var(--text-dim);">Сортировка:</span>
+              <button id="btn-proc-sort-cpu" class="btn btn-secondary btn-sm active" onclick="app.setProcSort('cpu')">По CPU %</button>
+              <button id="btn-proc-sort-ram" class="btn btn-secondary btn-sm" onclick="app.setProcSort('ram')">По RAM %</button>
+              <button class="btn btn-primary btn-sm" onclick="app.loadProcesses()">⟳ Обновить</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>PID</th>
+                    <th>Процесс</th>
+                    <th>Пользователь</th>
+                    <th>CPU %</th>
+                    <th>RAM %</th>
+                    <th>Память (RSS)</th>
+                    <th>Состояние</th>
+                    <th style="text-align: right;">Действие</th>
+                  </tr>
+                </thead>
+                <tbody id="processes-table-body">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Files -->
+        <div id="view-files" class="tab-view" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 10px;">
+            <!-- Bookmarks -->
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button class="btn btn-secondary btn-sm" onclick="app.loadFiles('/')">/ (Root)</button>
+              <button class="btn btn-secondary btn-sm" onclick="app.loadFiles('/etc/nginx')">/etc/nginx</button>
+              <button class="btn btn-secondary btn-sm" onclick="app.loadFiles('/home/grinronn')">/home/grinronn</button>
+              <button class="btn btn-secondary btn-sm" onclick="app.loadFiles('/mnt/disk2')">/mnt/disk2</button>
+              <button class="btn btn-secondary btn-sm" onclick="app.loadFiles('/var/log')">/var/log</button>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <input type="text" id="file-search-input" class="form-input" placeholder="Фильтр в папке..." style="width: 160px; padding: 5px 10px; font-size: 0.82rem;">
+              <button id="btn-create-file" class="btn btn-secondary btn-sm">+ Создать файл</button>
+              <button id="btn-create-folder" class="btn btn-secondary btn-sm">+ Папка</button>
+              <label class="btn btn-primary btn-sm" style="cursor: pointer;">
+                ↑ Загрузить файл
+                <input type="file" id="file-upload-input" style="display: none;">
+              </label>
+            </div>
+          </div>
+
+          <!-- Breadcrumbs -->
+          <div style="background: rgba(0,0,0,0.3); padding: 10px 16px; border-radius: var(--radius-sm); margin-bottom: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.88rem; display: flex; align-items: center; gap: 8px;">
+            <span style="color: var(--accent-cyan);">Путь:</span>
+            <span id="current-file-path">/</span>
+          </div>
+
+          <div class="card">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th class="sortable sorted-asc" id="th-file-name" onclick="app.toggleFileSort('name')">Имя</th>
+                    <th class="sortable" id="th-file-size" onclick="app.toggleFileSort('size')">Размер</th>
+                    <th>Права</th>
+                    <th class="sortable" id="th-file-mtime" onclick="app.toggleFileSort('mtime')">Изменен</th>
+                    <th style="text-align: right;">Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="files-table-body">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Users -->
+        <div id="view-users" class="tab-view" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <p style="color: var(--text-muted); font-size: 0.9rem;">
+              Управление учетными записями пользователей Linux (`/etc/passwd`).
+            </p>
+            <div style="display: flex; gap: 10px;">
+              <button id="btn-open-new-user-modal" class="btn btn-primary">
+                + Добавить пользователя
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Логин (Username)</th>
+                    <th>UID</th>
+                    <th>Домашний каталог</th>
+                    <th>Командная оболочка</th>
+                    <th>Sudo (Root)</th>
+                    <th>Тип</th>
+                    <th style="text-align: right;">Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="users-table-body">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: SSL / Let's Encrypt -->
+        <div id="view-ssl" class="tab-view" style="display: none;">
+          <div class="grid-stats" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-bottom: 20px;">
+            <div class="card" style="padding: 16px;">
+              <div class="stat-label">Всего сертификатов</div>
+              <div class="stat-value" id="ssl-stat-total" style="font-size: 1.8rem;">—</div>
+            </div>
+            <div class="card" style="padding: 16px;">
+              <div class="stat-label">Активных (>30 дн.)</div>
+              <div class="stat-value" id="ssl-stat-valid" style="font-size: 1.8rem; color: var(--accent-emerald);">—</div>
+            </div>
+            <div class="card" style="padding: 16px;">
+              <div class="stat-label">Скоро истекают (≤30 дн.)</div>
+              <div class="stat-value" id="ssl-stat-expiring" style="font-size: 1.8rem; color: var(--accent-amber);">—</div>
+            </div>
+            <div class="card" style="padding: 16px;">
+              <div class="stat-label">Истекших</div>
+              <div class="stat-value" id="ssl-stat-expired" style="font-size: 1.8rem; color: var(--accent-rose);">—</div>
+            </div>
+          </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <input type="text" id="ssl-search-input" class="form-input" placeholder="Поиск по домену..." style="width: 250px;">
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button id="btn-renew-all-ssl" class="btn btn-secondary">⟳ Продлить все (Renew)</button>
+              <button id="btn-open-issue-ssl" class="btn btn-primary">+ Выпустить сертификат</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Имя сертификата</th>
+                    <th>Покрываемые домены</th>
+                    <th>Срок окончания</th>
+                    <th>Осталось дней</th>
+                    <th>Статус</th>
+                    <th style="text-align: right;">Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="ssl-table-body">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Network & Firewall -->
+        <div id="view-network" class="tab-view" style="display: none;">
+          <div class="card" style="margin-bottom: 20px;">
+            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px;">
+              <div style="display: flex; align-items: center; gap: 16px;">
+                <div class="stat-icon icon-net" style="width: 44px; height: 44px; font-size: 1.3rem;">🛡️</div>
+                <div>
+                  <div style="font-weight: 700; font-size: 1.1rem; display: flex; align-items: center; gap: 10px;">
+                    Фаервол UFW: <span id="ufw-status-badge" class="badge">—</span>
+                  </div>
+                  <div style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">
+                    Внешний IP: <code id="net-public-ip">178.72.115.30</code> • Политика по умолчанию: Входящие DENY, Исходящие ALLOW
+                  </div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <button id="btn-toggle-ufw" class="btn btn-secondary">Включить/Отключить UFW</button>
+                <button id="btn-open-add-ufw" class="btn btn-primary">+ Добавить правило UFW</button>
+                <button id="btn-refresh-network" class="btn btn-secondary">⟳ Обновить</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section Switcher: Ports vs Rules -->
+          <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+            <button id="tab-btn-ports" class="btn btn-secondary btn-sm active" onclick="app.switchNetSubTab('ports')">Открытые прослушиваемые порты</button>
+            <button id="tab-btn-rules" class="btn btn-secondary btn-sm" onclick="app.switchNetSubTab('rules')">Правила фаервола UFW</button>
+          </div>
+
+          <!-- Subtab: Ports -->
+          <div id="net-subtab-ports" class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px;">
+              <span style="font-size: 0.88rem; color: var(--text-muted);">Активные сокеты сервера (TCP/UDP LISTEN) из <code>ss -tulpn</code></span>
+              <input type="text" id="ports-filter-input" class="form-input" placeholder="Фильтр по порту/службе..." style="width: 240px; padding: 6px 12px; font-size: 0.82rem;">
+            </div>
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Порт & Протокол</th>
+                    <th>Служба / Процесс</th>
+                    <th>PID</th>
+                    <th>Локальный адрес</th>
+                    <th>Доступность</th>
+                    <th>Статус в UFW</th>
+                    <th style="text-align: right;">Действие</th>
+                  </tr>
+                </thead>
+                <tbody id="ports-table-body">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Subtab: UFW Rules -->
+          <div id="net-subtab-rules" class="card" style="display: none;">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Порт / Назначение</th>
+                    <th>Действие</th>
+                    <th>Источник (From)</th>
+                    <th>Протокол IP</th>
+                    <th style="text-align: right;">Удаление</th>
+                  </tr>
+                </thead>
+                <tbody id="ufw-rules-table-body">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: S.M.A.R.T. & Disks -->
+        <div id="view-smart" class="tab-view" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+            <span style="font-size: 0.88rem; color: var(--text-muted);">
+              Аппаратный мониторинг состояния накопителей, температура и атрибуты износа (smartctl)
+            </span>
+            <button id="btn-refresh-smart" class="btn btn-secondary">⟳ Обновить статус</button>
+          </div>
+          
+          <div id="smart-disks-container" style="display: flex; flex-direction: column; gap: 20px;">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Tab: Cron Scheduler -->
+        <div id="view-cron" class="tab-view" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <label class="form-label" style="margin-bottom: 0;">Пользователь:</label>
+              <select id="cron-user-select" class="form-select" style="width: 140px; padding: 6px 12px;">
+                <option value="grinronn" selected>grinronn</option>
+                <option value="root">root</option>
+              </select>
+              <input type="text" id="cron-search-input" class="form-input" placeholder="Поиск по команде..." style="width: 220px; padding: 6px 12px;">
+            </div>
+            <div style="display: flex; gap: 10px;">
+              <button id="btn-open-add-cron" class="btn btn-primary">+ Добавить задачу Cron</button>
+              <button id="btn-refresh-cron" class="btn btn-secondary">⟳ Обновить</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th style="width: 60px;">Статус</th>
+                    <th>Расписание</th>
+                    <th>Маска Cron</th>
+                    <th>Команда</th>
+                    <th style="text-align: right;">Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="cron-table-body">
+                  <!-- Populated by JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: Logs -->
+        
+        <!-- Tab: Samba -->
+        <div id="view-samba" class="tab-view" style="display: none;">
+          <!-- Top Overview Grid -->
+          <div class="grid-stats" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 20px;">
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Службы SMB / NMB</span>
+                <div class="stat-icon icon-net">📁</div>
+              </div>
+              <div class="stat-value" style="font-size: 1.15rem; margin-top: 4px;" id="samba-status-badge">
+                <span class="badge badge-emerald">Запущена</span>
+              </div>
+              <div class="stat-subtext" id="samba-version-text" style="margin-top: 6px;">Samba 4.x</div>
+            </div>
+
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Порты Samba</span>
+                <div class="stat-icon icon-cpu">🔌</div>
+              </div>
+              <div class="stat-value" style="font-size: 1.1rem; margin-top: 4px;">
+                <span id="samba-port-139" class="badge badge-emerald">139 TCP</span>
+                <span id="samba-port-445" class="badge badge-emerald">445 TCP</span>
+              </div>
+              <div class="stat-subtext" style="margin-top: 6px;">UFW: Разрешены</div>
+            </div>
+
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Сетевые папки (Shares)</span>
+                <div class="stat-icon icon-disk">🗂️</div>
+              </div>
+              <div class="stat-value"><span id="samba-shares-count">0</span></div>
+              <div class="stat-subtext" style="margin-top: 6px;">Доступно для сети Windows / macOS / Linux</div>
+            </div>
+
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Клиентские сессии</span>
+                <div class="stat-icon icon-ram">👥</div>
+              </div>
+              <div class="stat-value"><span id="samba-sessions-count">0</span></div>
+              <div class="stat-subtext" id="samba-users-count-text" style="margin-top: 6px;">Пользователей SMB: 0</div>
+            </div>
+          </div>
+
+          <!-- Controls Toolbar -->
+          <div class="card" style="margin-bottom: 20px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn btn-primary btn-sm" id="btn-open-new-samba-share">
+                  + Создать сетевую папку (Share)
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-open-new-samba-user">
+                  + Добавить пользователя SMB
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-testparm-samba">
+                  ✓ Проверить (testparm)
+                </button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn btn-secondary btn-sm" id="btn-edit-samba-config">
+                  ⚙ Редактор smb.conf
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-restart-samba">
+                  ⟳ Перезапустить Samba
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Shares List Card -->
+          <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h3 style="font-size: 1.05rem; font-weight: 700;">Сетевые папки (SMB Shares)</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">Для подключения с Windows используйте UNC-путь: \\192.168.0.103\ИмяПапки</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="app.loadSambaOverview()">⟳ Обновить</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Имя папки</th>
+                    <th>Путь на сервере</th>
+                    <th>Windows UNC Путь</th>
+                    <th>Права</th>
+                    <th>Доступ</th>
+                    <th>Разрешенные пользователи</th>
+                    <th style="text-align: right;">Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="samba-shares-tbody">
+                  <tr><td colspan="7" style="text-align: center; color: var(--text-muted); padding: 24px;">Загрузка сетевых папок...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- 2 Columns: Users & Active Sessions -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 20px;">
+            <!-- Samba Users -->
+            <div class="card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="font-size: 0.95rem; font-weight: 700;">Пользователи Samba (pdbedit)</h3>
+                <span class="badge badge-emerald" id="samba-users-badge">0 пользователей</span>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Логин</th>
+                      <th>UID</th>
+                      <th>Описание</th>
+                      <th style="text-align: right;">Действия</th>
+                    </tr>
+                  </thead>
+                  <tbody id="samba-users-tbody">
+                    <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 16px;">Загрузка...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Active SMB Sessions -->
+            <div class="card">
+              <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="font-size: 0.95rem; font-weight: 700;">Активные клиенты (smbstatus)</h3>
+                <span class="badge badge-cyan" id="samba-sessions-badge">0 клиентов</span>
+              </div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead>
+                    <tr>
+                      <th>Пользователь</th>
+                      <th>Клиент / IP</th>
+                      <th>Протокол</th>
+                      <th>PID</th>
+                    </tr>
+                  </thead>
+                  <tbody id="samba-sessions-tbody">
+                    <tr><td colspan="4" style="text-align: center; color: var(--text-muted); padding: 16px;">Нет активных подключений</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab: FTP -->
+        <div id="view-ftp" class="tab-view" style="display: none;">
+          <!-- Top Overview Grid -->
+          <div class="grid-stats" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 20px;">
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Служба vsftpd</span>
+                <div class="stat-icon icon-net">🌐</div>
+              </div>
+              <div class="stat-value" style="font-size: 1.15rem; margin-top: 4px;" id="ftp-status-badge">
+                <span class="badge badge-emerald">Запущена</span>
+              </div>
+              <div class="stat-subtext" style="margin-top: 6px;">Порт 21 TCP (Слушает)</div>
+            </div>
+
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Пассивные порты (PASV)</span>
+                <div class="stat-icon icon-cpu">📡</div>
+              </div>
+              <div class="stat-value" style="font-size: 1.1rem; margin-top: 4px;">
+                <span id="ftp-pasv-range-badge" class="badge badge-cyan">39000 — 40000</span>
+              </div>
+              <div class="stat-subtext" style="margin-top: 6px;">UFW: Открыты для передачи данных</div>
+            </div>
+
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">Адрес подключения</span>
+                <div class="stat-icon icon-disk">🔗</div>
+              </div>
+              <div class="stat-value" style="font-size: 0.95rem; font-family: monospace; margin-top: 6px;">
+                <span id="ftp-connect-url">ftp://192.168.0.103:21</span>
+              </div>
+              <div class="stat-subtext" style="margin-top: 6px;">
+                <button class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;" onclick="app.copyToClipboard('ftp://192.168.0.103')">Копировать URL</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="stat-header">
+                <span class="stat-label">FTP Пользователи</span>
+                <div class="stat-icon icon-ram">👤</div>
+              </div>
+              <div class="stat-value"><span id="ftp-users-count">0</span></div>
+              <div class="stat-subtext" style="margin-top: 6px;">Подключений сейчас: <span id="ftp-conns-count">0</span></div>
+            </div>
+          </div>
+
+          <!-- Controls Toolbar -->
+          <div class="card" style="margin-bottom: 20px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px;">
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn btn-primary btn-sm" id="btn-open-new-ftp-user">
+                  + Добавить FTP пользователя
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-test-ftp-conn">
+                  ⚡ Тест подключения
+                </button>
+              </div>
+              <div style="display: flex; align-items: center; gap: 10px;">
+                <button class="btn btn-secondary btn-sm" id="btn-edit-ftp-config">
+                  ⚙ Редактор vsftpd.conf
+                </button>
+                <button class="btn btn-secondary btn-sm" id="btn-restart-ftp">
+                  ⟳ Перезапустить FTP
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Settings & Live Tester Grid -->
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 20px; margin-bottom: 20px;">
+            <!-- Quick Settings Card -->
+            <div class="card">
+              <div class="card-header">
+                <h3 style="font-size: 0.95rem; font-weight: 700;">Основные настройки vsftpd</h3>
+              </div>
+              <div style="padding: 18px;">
+                <form id="ftp-settings-form">
+                  <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                    <div>
+                      <div style="font-weight: 600; font-size: 0.88rem;">Разрешить запись файлов (write_enable)</div>
+                      <div style="font-size: 0.78rem; color: var(--text-muted);">Позволяет пользователям загружать, создавать и удалять файлы</div>
+                    </div>
+                    <input type="checkbox" id="ftp-opt-write-enable" style="width: 20px; height: 20px; accent-color: var(--accent-indigo);">
+                  </div>
+
+                  <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                    <div>
+                      <div style="font-weight: 600; font-size: 0.88rem;">Изолировать в домашней папке (chroot_local_user)</div>
+                      <div style="font-size: 0.78rem; color: var(--text-muted);">Запрещает пользователям подниматься выше домашней папки</div>
+                    </div>
+                    <input type="checkbox" id="ftp-opt-chroot" style="width: 20px; height: 20px; accent-color: var(--accent-indigo);">
+                  </div>
+
+                  <div class="form-group" style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px;">
+                    <div>
+                      <div style="font-weight: 600; font-size: 0.88rem;">Анонимный доступ (anonymous_enable)</div>
+                      <div style="font-size: 0.78rem; color: var(--text-muted);">Разрешить вход без логина и пароля (чтение /srv/ftp)</div>
+                    </div>
+                    <input type="checkbox" id="ftp-opt-anonymous" style="width: 20px; height: 20px; accent-color: var(--accent-indigo);">
+                  </div>
+
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px;">
+                    <div class="form-group">
+                      <label class="form-label" style="font-size: 0.8rem;">Мин. пассивный порт</label>
+                      <input type="number" id="ftp-opt-pasv-min" class="form-input" value="39000">
+                    </div>
+                    <div class="form-group">
+                      <label class="form-label" style="font-size: 0.8rem;">Макс. пассивный порт</label>
+                      <input type="number" id="ftp-opt-pasv-max" class="form-input" value="40000">
+                    </div>
+                  </div>
+
+                  <button type="submit" class="btn btn-primary btn-sm" style="width: 100%; justify-content: center;">
+                    Сохранить настройки FTP
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <!-- Live FTP Connection Tester -->
+            <div class="card">
+              <div class="card-header">
+                <h3 style="font-size: 0.95rem; font-weight: 700;">Интерактивный тест подключения FTP</h3>
+              </div>
+              <div style="padding: 18px;">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px;">
+                  <div class="form-group">
+                    <label class="form-label" style="font-size: 0.8rem;">Пользователь</label>
+                    <input type="text" id="ftp-test-username" class="form-input" value="grinronn">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" style="font-size: 0.8rem;">Пароль</label>
+                    <input type="password" id="ftp-test-password" class="form-input" value="Griha2901!">
+                  </div>
+                </div>
+                <button class="btn btn-primary btn-sm" id="btn-run-ftp-test" style="width: 100%; justify-content: center; margin-bottom: 14px;">
+                  ⚡ Проверить соединение с 127.0.0.1:21
+                </button>
+                <div id="ftp-test-result-box" style="display: none; background: #070a10; border: 1px solid var(--border-color); border-radius: var(--radius-sm); padding: 12px; font-family: monospace; font-size: 0.8rem; max-height: 160px; overflow-y: auto;">
+                  <div id="ftp-test-result-status" style="font-weight: bold; margin-bottom: 6px;"></div>
+                  <div id="ftp-test-result-details" style="color: var(--text-muted); line-height: 1.4;"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- FTP Users Table -->
+          <div class="card">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+              <div>
+                <h3 style="font-size: 1.05rem; font-weight: 700;">Пользователи с доступом к FTP</h3>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">Для подключения к FTP используются системные пользователи сервера</p>
+              </div>
+              <button class="btn btn-secondary btn-sm" onclick="app.loadFtpOverview()">⟳ Обновить</button>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Логин</th>
+                    <th>UID</th>
+                    <th>Домашняя папка (FTP Root)</th>
+                    <th>Оболочка (Shell)</th>
+                    <th style="text-align: right;">Действия</th>
+                  </tr>
+                </thead>
+                <tbody id="ftp-users-tbody">
+                  <tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 24px;">Загрузка пользователей...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+<div id="view-logs" class="tab-view" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button id="btn-log-access" class="btn btn-secondary btn-sm active" onclick="app.switchLogType('access')">Nginx Access Log</button>
+              <button id="btn-log-error" class="btn btn-secondary btn-sm" onclick="app.switchLogType('error')">Nginx Error Log</button>
+              <button id="btn-log-journal" class="btn btn-secondary btn-sm" onclick="app.switchLogType('journal')">System Journal</button>
+              <button id="btn-log-beget" class="btn btn-secondary btn-sm" onclick="app.switchLogType('beget')">Beget DDNS Log</button>
+            </div>
+            <div style="display: flex; gap: 10px; align-items: center;">
+              <input type="text" id="log-filter-input" class="form-input" placeholder="Фильтр по тексту..." style="width: 200px; padding: 6px 10px; font-size: 0.82rem;">
+              <button id="btn-refresh-logs" class="btn btn-primary btn-sm">⟳ Обновить</button>
+            </div>
+          </div>
+          <div class="card" style="padding: 0;">
+            <pre id="log-viewer" style="height: 600px; overflow-y: auto; padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; line-height: 1.6; color: #cbd5e1; background: #070a10; border-radius: var(--radius-md);"></pre>
+          </div>
+        </div>
+
+        <!-- Tab: Web Terminal -->
+        <div id="view-terminal" class="tab-view" style="display: none;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <span style="font-size: 0.88rem; color: var(--text-muted);">
+              Интерактивная консоль Linux (bash root). Поддерживает <code>htop</code>, <code>nano</code>, цвета и горячие клавиши.
+            </span>
+            <button id="btn-reconnect-terminal" class="btn btn-secondary btn-sm">Переподключить</button>
+          </div>
+          <div id="terminal-container"></div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+
+  <!-- Modals -->
+  <!-- Edit Nginx Config Modal -->
+  <div id="modal-edit-nginx" class="modal-overlay">
+    <div class="modal" style="max-width: 900px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="edit-nginx-title">Редактирование конфига</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-edit-nginx')">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px;">
+        <textarea id="nginx-editor-area" class="code-editor"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-edit-nginx')">Отмена</button>
+        <button id="btn-save-nginx" class="btn btn-primary">Сохранить & Перезагрузить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create New Site Modal -->
+  <div id="modal-new-site" class="modal-overlay">
+    <div class="modal" style="max-width: 540px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Создание нового сайта Nginx</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-new-site')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="new-site-form">
+          <div class="form-group">
+            <label class="form-label">Домен сайта</label>
+            <input type="text" id="new-site-domain" class="form-input" placeholder="например, app.grinronn.ru" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Тип сайта</label>
+            <select id="new-site-type" class="form-select">
+              <option value="proxy">Обратный прокси (Reverse Proxy)</option>
+              <option value="static">Статический сайт (HTML / Web)</option>
+            </select>
+          </div>
+          <div class="form-group" id="group-proxy-target">
+            <label class="form-label">Адрес назначения (Proxy Pass)</label>
+            <input type="text" id="new-site-target" class="form-input" value="http://127.0.0.1:3000">
+          </div>
+          <div class="form-group" id="group-root-path" style="display: none;">
+            <label class="form-label">Путь к файлам (Root path)</label>
+            <input type="text" id="new-site-root" class="form-input" value="/var/www/html">
+          </div>
+          <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-top: 12px;">
+            <input type="checkbox" id="new-site-ssl" style="width: 18px; height: 18px;">
+            <label for="new-site-ssl" class="form-label" style="margin-bottom: 0; cursor: pointer;">
+              Включить Let's Encrypt SSL (порт 443 + HTTP/2)
+            </label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-new-site')">Отмена</button>
+        <button id="btn-submit-new-site" class="btn btn-primary">Создать сайт</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Text File Editor Modal -->
+  <div id="modal-edit-file" class="modal-overlay">
+    <div class="modal" style="max-width: 900px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="edit-file-title">Редактирование файла</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-edit-file')">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px;">
+        <textarea id="file-editor-area" class="code-editor"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-edit-file')">Отмена</button>
+        <button id="btn-save-file" class="btn btn-primary">Сохранить файл</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Service Log Modal -->
+  <div id="modal-service-log" class="modal-overlay">
+    <div class="modal" style="max-width: 850px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="service-log-title">Логи службы</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-service-log')">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px;">
+        <pre id="service-log-content" style="height: 480px; overflow-y: auto; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; line-height: 1.5; color: #cbd5e1; background: #070a10; border-radius: var(--radius-sm);"></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-service-log')">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create Server User Modal -->
+  <div id="modal-new-user" class="modal-overlay">
+    <div class="modal" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Новый пользователь сервера</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-new-user')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="new-user-form">
+          <div class="form-group">
+            <label class="form-label">Имя пользователя (Логин)</label>
+            <input type="text" id="new-user-name" class="form-input" placeholder="например, developer" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Пароль</label>
+            <input type="password" id="new-user-pass" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Оболочка (Shell)</label>
+            <select id="new-user-shell" class="form-select">
+              <option value="/bin/bash">/bin/bash (стандартная)</option>
+              <option value="/bin/sh">/bin/sh</option>
+              <option value="/usr/sbin/nologin">/usr/sbin/nologin (без входа в консоль)</option>
+            </select>
+          </div>
+          <div class="form-group" style="display: flex; align-items: center; gap: 10px; margin-top: 12px;">
+            <input type="checkbox" id="new-user-sudo" style="width: 18px; height: 18px;">
+            <label for="new-user-sudo" class="form-label" style="margin-bottom: 0; cursor: pointer;">
+              Предоставить права sudo (Администратор)
+            </label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-new-user')">Отмена</button>
+        <button id="btn-submit-new-user" class="btn btn-primary">Создать</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Change Password Modal -->
+  <div id="modal-change-pass" class="modal-overlay">
+    <div class="modal" style="max-width: 420px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="change-pass-title">Смена пароля</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-change-pass')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Новый пароль</label>
+          <input type="password" id="change-pass-input" class="form-input" required>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-change-pass')">Отмена</button>
+        <button id="btn-submit-change-pass" class="btn btn-primary">Сохранить пароль</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Issue SSL Modal -->
+  <div id="modal-issue-ssl" class="modal-overlay">
+    <div class="modal" style="max-width: 500px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Выпуск SSL сертификата (Let's Encrypt)</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-issue-ssl')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Домен для сертификата</label>
+          <input type="text" id="ssl-issue-domain" class="form-input" placeholder="например, test.grinronn.ru" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Email для уведомлений</label>
+          <input type="email" id="ssl-issue-email" class="form-input" value="admin@grinronn.ru">
+        </div>
+        <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">
+          Сертификат будет автоматически запрошен через Certbot для Nginx и привязан к серверу. Убедитесь, что DNS-запись домена уже направлена на этот сервер.
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-issue-ssl')">Отмена</button>
+        <button id="btn-submit-issue-ssl" class="btn btn-primary">Выпустить сертификат</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add UFW Rule Modal -->
+  <div id="modal-add-ufw" class="modal-overlay">
+    <div class="modal" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Добавить правило фаервола UFW</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-add-ufw')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Действие</label>
+          <select id="ufw-rule-action" class="form-select">
+            <option value="allow" selected>Разрешить (ALLOW)</option>
+            <option value="deny">Заблокировать (DENY)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Порт или диапазон</label>
+          <input type="text" id="ufw-rule-port" class="form-input" placeholder="например, 8080 или 3000:4000" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Протокол</label>
+          <select id="ufw-rule-proto" class="form-select">
+            <option value="tcp" selected>TCP</option>
+            <option value="udp">UDP</option>
+            <option value="any">TCP и UDP (Любой)</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Источник (IP-адрес / Anywhere)</label>
+          <input type="text" id="ufw-rule-from" class="form-input" value="Anywhere" placeholder="Anywhere или IP (например, 192.168.0.0/24)">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-add-ufw')">Отмена</button>
+        <button id="btn-submit-add-ufw" class="btn btn-primary">Применить правило</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SMART Attributes Modal -->
+  <div id="modal-smart-attrs" class="modal-overlay">
+    <div class="modal" style="max-width: 850px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="smart-attrs-title">Атрибуты S.M.A.R.T.</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-smart-attrs')">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px;">
+        <div class="table-container" style="max-height: 520px; overflow-y: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Название атрибута</th>
+                <th>Текущее</th>
+                <th>Худшее</th>
+                <th>Порог</th>
+                <th>Raw значение</th>
+                <th>Состояние</th>
+              </tr>
+            </thead>
+            <tbody id="smart-attrs-table-body">
+              <!-- Populated by JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-smart-attrs')">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Cron Modal -->
+  <div id="modal-edit-cron" class="modal-overlay">
+    <div class="modal" style="max-width: 580px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Задача планировщика (Cron)</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-edit-cron')">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-group">
+          <label class="form-label">Готовые шаблоны расписания</label>
+          <select id="cron-preset-select" class="form-select">
+            <option value="">-- Выберите шаблон или введите вручную --</option>
+            <option value="* * * * *">Каждую минуту (* * * * *)</option>
+            <option value="*/2 * * * *">Каждые 2 минуты (*/2 * * * *)</option>
+            <option value="*/5 * * * *">Каждые 5 минут (*/5 * * * *)</option>
+            <option value="*/15 * * * *">Каждые 15 минут (*/15 * * * *)</option>
+            <option value="0 * * * *">Каждый час в 00 минут (0 * * * *)</option>
+            <option value="0 */6 * * *">Каждые 6 часов (0 */6 * * *)</option>
+            <option value="0 0 * * *">Ежедневно в полночь (0 0 * * *)</option>
+            <option value="0 6 * * *">Ежедневно в 06:00 утра (0 6 * * *)</option>
+            <option value="0 0 * * 1">Каждый понедельник в 00:00 (0 0 * * 1)</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Выражение Cron (5 полей: мин час день мес день_недели)</label>
+          <input type="text" id="cron-expr-input" class="form-input" placeholder="например, */5 * * * *" required style="font-family: monospace;">
+          <div id="cron-preview-text" style="font-size: 0.82rem; color: var(--accent-cyan); margin-top: 4px;"></div>
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Команда для выполнения</label>
+          <input type="text" id="cron-cmd-input" class="form-input" placeholder="например, /usr/bin/python3 /path/to/script.py" required style="font-family: monospace;">
+        </div>
+
+        <div class="form-group">
+          <label class="form-label">Описание / комментарий</label>
+          <input type="text" id="cron-comment-input" class="form-input" placeholder="например, Синхронизация БД или бэкап">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-edit-cron')">Отмена</button>
+        <button id="btn-submit-cron" class="btn btn-primary">Сохранить задачу</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cron Run Output Modal -->
+  <div id="modal-cron-run-output" class="modal-overlay">
+    <div class="modal" style="max-width: 750px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Результат запуска команды</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-cron-run-output')">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px;">
+        <div style="display: flex; gap: 16px; margin-bottom: 12px; font-size: 0.85rem;">
+          <div>Статус: <span id="cron-run-status-badge" class="badge">—</span></div>
+          <div>Время: <span id="cron-run-duration" style="color: var(--accent-cyan); font-weight: 600;">—</span></div>
+        </div>
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 6px;">Вывод (STDOUT / STDERR):</div>
+        <pre id="cron-run-content" style="height: 360px; overflow-y: auto; padding: 12px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; line-height: 1.5; color: #cbd5e1; background: #070a10; border-radius: var(--radius-sm); white-space: pre-wrap;"></pre>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-cron-run-output')">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
+  
+  <!-- Samba Share Modal -->
+  <div id="modal-samba-share" class="modal-overlay">
+    <div class="modal" style="max-width: 620px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="samba-share-modal-title">Сетевая папка Samba</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-samba-share')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="samba-share-form">
+          <input type="hidden" id="samba-share-old-name">
+          <div class="form-group">
+            <label class="form-label">Имя сетевой папки (Share Name)</label>
+            <input type="text" id="samba-share-name" class="form-input" placeholder="например, storage" required>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Будет доступна в Windows как \\192.168.0.103\ИмяПапки</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Путь на сервере</label>
+            <input type="text" id="samba-share-path" class="form-input" placeholder="например, /mnt/disk2/storage или /var/www/..." required>
+            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 4px;">Если папка не существует, она будет создана автоматически</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Комментарий / Описание</label>
+            <input type="text" id="samba-share-comment" class="form-input" placeholder="например, Общее хранилище файлов">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 14px;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="samba-share-readonly" style="width: 18px; height: 18px;">
+              <label for="samba-share-readonly" class="form-label" style="margin: 0; cursor: pointer;">Только чтение</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="samba-share-guest" style="width: 18px; height: 18px;">
+              <label for="samba-share-guest" class="form-label" style="margin: 0; cursor: pointer;">Гостевой вход</label>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <input type="checkbox" id="samba-share-browseable" checked style="width: 18px; height: 18px;">
+              <label for="samba-share-browseable" class="form-label" style="margin: 0; cursor: pointer;">Отображать в сети</label>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Разрешенные пользователи (valid users)</label>
+            <input type="text" id="samba-share-valid-users" class="form-input" placeholder="например, grinronn, libuser, smbuser (оставьте пустым для всех)">
+          </div>
+
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+            <div class="form-group">
+              <label class="form-label">Create Mask</label>
+              <input type="text" id="samba-share-create-mask" class="form-input" value="0775">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Directory Mask</label>
+              <input type="text" id="samba-share-dir-mask" class="form-input" value="0775">
+            </div>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-samba-share')">Отмена</button>
+        <button id="btn-submit-samba-share" class="btn btn-primary">Сохранить папку</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Samba User Modal -->
+  <div id="modal-samba-user" class="modal-overlay">
+    <div class="modal" style="max-width: 440px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Пользователь Samba</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-samba-user')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="samba-user-form">
+          <div class="form-group">
+            <label class="form-label">Логин (Имя пользователя)</label>
+            <input type="text" id="samba-user-name" class="form-input" placeholder="например, smbuser" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Пароль для Samba</label>
+            <input type="password" id="samba-user-pass" class="form-input" required>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; margin-top: 10px;">
+            <input type="checkbox" id="samba-user-create-sys" checked style="width: 18px; height: 18px;">
+            <label for="samba-user-create-sys" class="form-label" style="margin: 0; cursor: pointer; font-size: 0.85rem;">
+              Создать системного пользователя, если его нет
+            </label>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-samba-user')">Отмена</button>
+        <button id="btn-submit-samba-user" class="btn btn-primary">Сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Samba Raw Config Editor Modal -->
+  <div id="modal-samba-config" class="modal-overlay">
+    <div class="modal" style="max-width: 900px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Редактирование /etc/samba/smb.conf</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-samba-config')">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px;">
+        <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px;">Перед сохранением синтаксис автоматически валидируется через <code>testparm -s</code>.</div>
+        <textarea id="samba-config-editor-area" class="code-editor" style="height: 480px;"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-samba-config')">Отмена</button>
+        <button id="btn-save-samba-config" class="btn btn-primary">Проверить и сохранить</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FTP User Modal -->
+  <div id="modal-ftp-user" class="modal-overlay">
+    <div class="modal" style="max-width: 480px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Новый пользователь FTP</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-ftp-user')">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="ftp-user-form">
+          <div class="form-group">
+            <label class="form-label">Логин (Имя пользователя)</label>
+            <input type="text" id="ftp-user-name" class="form-input" placeholder="например, ftpclient" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Пароль</label>
+            <input type="password" id="ftp-user-pass" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Домашняя папка (FTP Root)</label>
+            <input type="text" id="ftp-user-home" class="form-input" placeholder="/var/www или /home/grinronn" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Оболочка (Shell)</label>
+            <select id="ftp-user-shell" class="form-select">
+              <option value="/bin/bash">/bin/bash (Полный доступ к терминалу)</option>
+              <option value="/usr/sbin/nologin" selected>/usr/sbin/nologin (Только FTP, без терминала)</option>
+            </select>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-ftp-user')">Отмена</button>
+        <button id="btn-submit-ftp-user" class="btn btn-primary">Создать пользователя</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FTP Raw Config Editor Modal -->
+  <div id="modal-ftp-config" class="modal-overlay">
+    <div class="modal" style="max-width: 850px;">
+      <div class="modal-header">
+        <h3 class="modal-title">Редактирование /etc/vsftpd.conf</h3>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-ftp-config')">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 16px;">
+        <textarea id="ftp-config-editor-area" class="code-editor" style="height: 480px;"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-ftp-config')">Отмена</button>
+        <button id="btn-save-ftp-config" class="btn btn-primary">Сохранить и перезапустить vsftpd</button>
+      </div>
+    </div>
+  </div>
+
+<!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

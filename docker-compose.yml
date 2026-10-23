@@ -1,0 +1,19 @@
+services:
+  serverdeck:
+    build: .
+    container_name: serverdeck
+    restart: unless-stopped
+    privileged: true
+    pid: host
+    network_mode: host
+    volumes:
+      - .:/app
+      - /etc/nginx:/etc/nginx:rw
+      - /var/log:/var/log:ro
+      - /var/run/docker.sock:/var/run/docker.sock:rw
+      - /:/host:rw
+    environment:
+      - ADMIN_USER=grinronn
+      - ADMIN_PASS=Griha2901!
+      - SECRET_KEY=serverdeck_secret_grinronn_2026_super_secure_key_123456
+      - PORT=8088
