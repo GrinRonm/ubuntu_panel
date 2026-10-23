@@ -716,7 +716,7 @@ async def list_nginx_sites(user: str = Depends(require_auth)):
                 "error": str(e)
             })
 
-    return sites
+    return {"installed": True, "sites": sites}
 
 @app.get("/api/nginx/sites/{filename}")
 async def get_nginx_site(filename: str, user: str = Depends(require_auth)):
@@ -1590,7 +1590,7 @@ async def get_smart_disks(user: str = Depends(require_auth)):
                 "attributes": attrs
             })
 
-    return {"disks": devices}
+    return {"installed": True, "disks": devices, "devices": devices}
 
 @app.post("/api/smart/test")
 async def run_smart_test(request: Request, user: str = Depends(require_auth)):
