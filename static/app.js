@@ -93,6 +93,7 @@ const app = {
     this.switchTab('dashboard');
     this.connectStatsWs();
     this.fetchMetricsHistory();
+    this.checkInitialSoftware();
   },
 
   // Bind UI Events
@@ -312,6 +313,7 @@ const app = {
 
     // Trigger tab specific loads
     if (tabName === 'dashboard') this.fetchMetricsHistory();
+    this.checkInitialSoftware();
     if (tabName === 'nginx') this.loadNginxSites();
     if (tabName === 'ssl') this.loadSslCerts();
     if (tabName === 'network') this.loadNetworkOverview();
@@ -422,6 +424,7 @@ const app = {
       btn.classList.toggle('active', btn.getAttribute('data-range') === range);
     });
     this.fetchMetricsHistory();
+    this.checkInitialSoftware();
   },
 
   async fetchMetricsHistory(showToast = false) {
@@ -593,16 +596,238 @@ const app = {
     }
   },
 
+  
+  // ==========================================
+  // --- Service Missing & Component Hub ---
+  // ==========================================
+  componentsStatus: null,
+
+  async loadSoftwareStatus(force = false) {
+    if (this.componentsStatus && !force) return this.componentsStatus;
+    try {
+      const res = await fetch('/api/components/status');
+      if (res.ok) {
+        this.componentsStatus = await res.json();
+        return this.componentsStatus;
+      }
+    } catch (err) {
+      console.error('Error fetching components status:', err);
+    }
+    return null;
+  },
+
+  renderMissingServiceCard(serviceKey, title, desc, icon) {
+    return `
+      <div class="service-missing-card">
+        <div class="service-missing-icon-wrap">
+          <div class="service-missing-icon">${icon}</div>
+        </div>
+        <h3 class="service-missing-title">${title}</h3>
+        <p class="service-missing-desc">${desc}</p>
+        <div class="service-missing-pills">
+          <div class="service-feature-pill">⚡ Быстрая установка через официальный APT</div>
+          <div class="service-feature-pill">🔒 Безопасная стандартная конфигурация</div>
+          <div class="service-feature-pill">🚀 Автоматический запуск службы</div>
+        </div>
+        <button class="btn btn-primary btn-lg" onclick="app.installComponent('${serviceKey}', this)" style="padding: 12px 28px; font-size: 1rem; border-radius: var(--radius-sm);">
+          <span>🚀 Установить ${serviceKey.toUpperCase()} в 1 клик</span>
+        </button>
+      </div>
+    `;
+  },
+
+  showMissingService(tabKey, serviceKey, title, desc, icon) {
+    const placeholder = document.getElementById(`${tabKey}-missing-placeholder`);
+    const contentWrap = document.getElementById(`${tabKey}-content-wrap`);
+    if (placeholder) {
+      placeholder.innerHTML = this.renderMissingServiceCard(serviceKey, title, desc, icon);
+      placeholder.style.display = 'block';
+    }
+    if (contentWrap) contentWrap.style.display = 'none';
+  },
+
+  hideMissingService(tabKey) {
+    const placeholder = document.getElementById(`${tabKey}-missing-placeholder`);
+    const contentWrap = document.getElementById(`${tabKey}-content-wrap`);
+    if (placeholder) placeholder.style.display = 'none';
+    if (contentWrap) contentWrap.style.display = 'block';
+  },
+
+  async checkInitialSoftware() {
+    const status = await this.loadSoftwareStatus(true);
+    if (!status) return;
+
+    const missing = Object.values(status).filter(c => !c.installed);
+    const dismissed = localStorage.getItem('serverdeck_software_banner_dismissed') === '1';
+
+    if (missing.length > 0 && !dismissed) {
+      this.renderDashboardSoftwareBanner(status);
+    }
+
+    // On initial run, show modal if core services missing
+    if (!localStorage.getItem('serverdeck_first_run_seen')) {
+      localStorage.setItem('serverdeck_first_run_seen', '1');
+      if (missing.length > 0) {
+        setTimeout(() => this.openSoftwareHub(), 600);
+      }
+    }
+  },
+
+  renderDashboardSoftwareBanner(status) {
+    const banner = document.getElementById('dashboard-software-banner');
+    const grid = document.getElementById('dashboard-software-grid');
+    if (!banner || !grid) return;
+
+    const comps = status || this.componentsStatus;
+    if (!comps) return;
+
+    const list = Object.values(comps);
+    list.sort((a, b) => {
+      if (a.installed === b.installed) return 0;
+      return a.installed ? 1 : -1;
+    });
+
+    const displayList = list.slice(0, 4);
+    grid.innerHTML = displayList.map(c => `
+      <div class="software-card" style="padding: 14px 16px;">
+        <div class="software-card-top">
+          <div class="software-card-icon">${c.icon}</div>
+          <div class="software-card-info">
+            <div class="software-card-name">
+              ${c.name}
+              ${c.installed 
+                ? (c.active ? '<span class="badge badge-emerald" style="font-size: 0.65rem;">Активен</span>' : '<span class="badge badge-amber" style="font-size: 0.65rem;">Остановлен</span>')
+                : '<span class="badge badge-inactive" style="font-size: 0.65rem;">Не установлен</span>'}
+            </div>
+            <div class="software-card-desc">${c.desc}</div>
+          </div>
+        </div>
+        <div class="software-card-bottom">
+          <span style="font-size: 0.75rem; color: var(--text-dim);">${c.version || c.category}</span>
+          ${c.installed 
+            ? `<button class="btn btn-secondary btn-sm" onclick="app.switchTab('${c.tab}')">Открыть ➔</button>`
+            : `<button class="btn btn-primary btn-sm" onclick="app.installComponent('${c.key}', this)">Установить в 1 клик</button>`}
+        </div>
+      </div>
+    `).join('');
+
+    banner.style.display = 'block';
+  },
+
+  dismissSoftwareBanner() {
+    const banner = document.getElementById('dashboard-software-banner');
+    if (banner) banner.style.display = 'none';
+    localStorage.setItem('serverdeck_software_banner_dismissed', '1');
+  },
+
+  async openSoftwareHub() {
+    this.openModal('modal-software-hub');
+    const grid = document.getElementById('software-hub-cards-grid');
+    if (!grid) return;
+    grid.innerHTML = '<div style="grid-column: 1 / -1; text-align: center; color: var(--text-muted); padding: 40px;">Загрузка списка компонентов сервера...</div>';
+
+    const status = await this.loadSoftwareStatus(true);
+    if (!status) {
+      grid.innerHTML = '<div style="grid-column: 1 / -1; color: var(--accent-rose); padding: 20px;">Ошибка проверки компонентов</div>';
+      return;
+    }
+
+    grid.innerHTML = Object.values(status).map(c => `
+      <div class="software-card">
+        <div class="software-card-top">
+          <div class="software-card-icon">${c.icon}</div>
+          <div class="software-card-info">
+            <div class="software-card-name">
+              <span>${c.name}</span>
+              ${c.installed 
+                ? (c.active ? '<span class="badge badge-emerald">Активен</span>' : '<span class="badge badge-amber">Остановлен</span>')
+                : '<span class="badge badge-inactive">Не установлен</span>'}
+            </div>
+            <div class="software-card-desc">${c.desc}</div>
+          </div>
+        </div>
+        <div class="software-card-bottom">
+          <span style="font-size: 0.78rem; color: var(--text-dim);">${c.version || c.category}</span>
+          ${c.installed 
+            ? `<button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-software-hub'); app.switchTab('${c.tab}');">Перейти во вкладку ➔</button>`
+            : `<button class="btn btn-primary btn-sm" onclick="app.installComponent('${c.key}', this)">🚀 Установить в 1 клик</button>`}
+        </div>
+      </div>
+    `).join('');
+  },
+
+  async installComponent(key, btn) {
+    if (btn) {
+      btn.classList.add('btn-install-loading');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span> Установка (10-30 сек)...';
+    }
+    this.showToast(`Запущена установка ${key.toUpperCase()}... Пожалуйста, подождите.`, 'info');
+
+    try {
+      const res = await fetch('/api/components/install', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ component: key })
+      });
+      const data = await res.json();
+      if (data.status) {
+        this.showToast(data.message, 'success');
+        // Reload software cache
+        await this.loadSoftwareStatus(true);
+
+        // If modal open, refresh it
+        const hubModal = document.getElementById('modal-software-hub');
+        if (hubModal && hubModal.style.display !== 'none') {
+          this.openSoftwareHub();
+        }
+
+        // Re-render dashboard banner if present
+        this.renderDashboardSoftwareBanner();
+
+        // Reload current tab
+        if (this.activeTab === 'nginx') this.loadNginxSites();
+        else if (this.activeTab === 'samba') this.loadSambaOverview();
+        else if (this.activeTab === 'ftp') this.loadFtpOverview();
+        else if (this.activeTab === 'ssl') this.loadSslCerts();
+        else if (this.activeTab === 'smart') this.loadSmartDisks();
+        else if (this.activeTab === 'network') this.loadNetworkOverview();
+      } else {
+        this.showToast(data.detail || 'Ошибка установки', 'error');
+        if (btn) {
+          btn.classList.remove('btn-install-loading');
+          btn.disabled = false;
+          btn.innerHTML = 'Повторить установку';
+        }
+      }
+    } catch (err) {
+      this.showToast(err.message, 'error');
+      if (btn) {
+        btn.classList.remove('btn-install-loading');
+        btn.disabled = false;
+        btn.innerHTML = 'Повторить установку';
+      }
+    }
+  },
+
   // --- Nginx Sites Module ---
   async loadNginxSites() {
     const tbody = document.getElementById('nginx-sites-table-body');
-    tbody.innerHTML = '<tr><td colspan="7">Загрузка сайтов...</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="7">Загрузка сайтов...</td></tr>';
 
     try {
       const res = await fetch('/api/nginx/sites');
-      const sites = await res.json();
+      const data = await res.json();
+
+      if (data && data.installed === false) {
+        this.showMissingService('nginx', 'nginx', 'Веб-сервер Nginx не установлен на сервере', 'Установите Nginx для создания сайтов, настройки обратного прокси (Reverse Proxy), привязки доменов и SSL.', '🌐');
+        return;
+      }
+      this.hideMissingService('nginx');
+
+      const sites = Array.isArray(data) ? data : (data.sites || []);
       if (!sites || sites.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7">Нет сайтов в /etc/nginx/sites-available</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7">Нет сайтов в /etc/nginx/sites-available</td></tr>';
         return;
       }
 
@@ -1361,18 +1586,23 @@ const app = {
   // --- SSL Certificates Module ---
   async loadSslCerts() {
     const tbody = document.getElementById('ssl-table-body');
-    tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 20px;">Загрузка сертификатов...</td></tr>';
+    if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: var(--text-muted); padding: 20px;">Загрузка сертификатов...</td></tr>';
     try {
       const res = await fetch('/api/ssl/certificates');
       if (res.ok) {
         const data = await res.json();
+        if (data && data.installed === false) {
+          this.showMissingService('ssl', 'certbot', 'Certbot (Let\'s Encrypt) не установлен на сервере', 'Установите Certbot для автоматического выпуска и продления бесплатных доверенных SSL-сертификатов HTTPS.', '🔒');
+          return;
+        }
+        this.hideMissingService('ssl');
         this.sslCerts = data.certificates || [];
         this.renderSslCerts();
       } else {
-        tbody.innerHTML = '<tr><td colspan="6" style="color: var(--accent-rose); padding: 16px;">Ошибка загрузки сертификатов</td></tr>';
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" style="color: var(--accent-rose); padding: 16px;">Ошибка загрузки сертификатов</td></tr>';
       }
     } catch (err) {
-      tbody.innerHTML = `<tr><td colspan="6" style="color: var(--accent-rose); padding: 16px;">${err.message}</td></tr>`;
+      if (tbody) tbody.innerHTML = `<tr><td colspan="6" style="color: var(--accent-rose); padding: 16px;">${err.message}</td></tr>`;
     }
   },
 
@@ -2091,6 +2321,12 @@ const app = {
       if (!res.ok) throw new Error('Ошибка получения данных Samba');
       const data = await res.json();
 
+      if (data && data.installed === false) {
+        this.showMissingService('samba', 'samba', 'Samba (SMB) не установлена на сервере', 'Установите Samba для создания общих сетевых папок, доступных напрямую в проводнике Windows и macOS.', '📁');
+        return;
+      }
+      this.hideMissingService('samba');
+
       // Status badges
       const statusBadge = document.getElementById('samba-status-badge');
       if (statusBadge) {
@@ -2406,6 +2642,12 @@ ${err.message}`);
       const res = await fetch('/api/ftp/overview');
       if (!res.ok) throw new Error('Ошибка получения статуса FTP');
       const data = await res.json();
+
+      if (data && data.installed === false) {
+        this.showMissingService('ftp', 'ftp', 'FTP-сервер (vsftpd) не установлен на сервере', 'Установите vsftpd для быстрой и защищенной передачи файлов по протоколу FTP с изоляцией пользователей.', '📡');
+        return;
+      }
+      this.hideMissingService('ftp');
 
       // Badges
       const statusBadge = document.getElementById('ftp-status-badge');

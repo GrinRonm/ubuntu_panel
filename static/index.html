@@ -131,7 +131,10 @@
           </div>
         </div>
         <div class="top-actions">
-          <button id="btn-quick-test-nginx" class="btn btn-secondary btn-sm" title="Проверить nginx -t">
+          <button id="btn-open-software-hub" class="btn btn-secondary btn-sm" onclick="app.openSoftwareHub()" title="Центр установки компонентов сервера">
+            📦 Установка софта
+          </button>
+          <button id="btn-quick-test-nginx"  class="btn btn-secondary btn-sm" title="Проверить nginx -t">
             ✓ Тест Nginx
           </button>
           <button id="btn-quick-reload-nginx" class="btn btn-primary btn-sm" title="Перезагрузить Nginx">
@@ -145,6 +148,28 @@
         
         <!-- Tab: Dashboard -->
         <div id="view-dashboard" class="tab-view">
+          <!-- Onboarding / Software Manager Banner -->
+          <div id="dashboard-software-banner" class="card" style="display: none; margin-bottom: 24px; border: 1px solid rgba(99, 102, 241, 0.35); background: linear-gradient(180deg, rgba(30, 41, 59, 0.6) 0%, rgba(15, 23, 42, 0.8) 100%);">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div class="stat-icon icon-cpu" style="width: 40px; height: 40px; font-size: 1.25rem;">📦</div>
+                <div>
+                  <h3 style="font-size: 1.05rem; font-weight: 700;">Рекомендуемые компоненты сервера</h3>
+                  <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 2px;">
+                    Установите популярные службы в 1 клик для полноценной работы сервера (Nginx, PHP, Samba, FTP и др.)
+                  </p>
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="btn btn-primary btn-sm" onclick="app.openSoftwareHub()">Все компоненты ➔</button>
+                <button class="btn btn-secondary btn-sm" onclick="app.dismissSoftwareBanner()" title="Скрыть блок">✕</button>
+              </div>
+            </div>
+            <div class="software-quick-grid" id="dashboard-software-grid">
+              <!-- Dynamically populated cards -->
+            </div>
+          </div>
+
           <div class="grid-stats">
             <div class="card">
               <div class="stat-header">
@@ -278,6 +303,8 @@
 
         <!-- Tab: Nginx Sites -->
         <div id="view-nginx" class="tab-view" style="display: none;">
+          <div id="nginx-missing-placeholder" style="display: none;"></div>
+          <div id="nginx-content-wrap">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
             <p style="color: var(--text-muted); font-size: 0.9rem;">
               Конфигурации сайтов из <code>/etc/nginx/sites-available/</code>. Включение/выключение создаёт симлинк в <code>sites-enabled/</code>.
@@ -308,6 +335,7 @@
                 </tbody>
               </table>
             </div>
+          </div>
           </div>
         </div>
 
@@ -540,6 +568,7 @@
               </table>
             </div>
           </div>
+          </div>
         </div>
 
         <!-- Tab: Network & Firewall -->
@@ -621,6 +650,8 @@
 
         <!-- Tab: S.M.A.R.T. & Disks -->
         <div id="view-smart" class="tab-view" style="display: none;">
+          <div id="smart-missing-placeholder" style="display: none;"></div>
+          <div id="smart-content-wrap">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
             <span style="font-size: 0.88rem; color: var(--text-muted);">
               Аппаратный мониторинг состояния накопителей, температура и атрибуты износа (smartctl)
@@ -630,6 +661,7 @@
           
           <div id="smart-disks-container" style="display: flex; flex-direction: column; gap: 20px;">
             <!-- Populated by JS -->
+          </div>
           </div>
         </div>
 
@@ -674,6 +706,8 @@
         
         <!-- Tab: Samba -->
         <div id="view-samba" class="tab-view" style="display: none;">
+          <div id="samba-missing-placeholder" style="display: none;"></div>
+          <div id="samba-content-wrap">
           <!-- Top Overview Grid -->
           <div class="grid-stats" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 20px;">
             <div class="card">
@@ -820,10 +854,13 @@
               </div>
             </div>
           </div>
+          </div>
         </div>
 
         <!-- Tab: FTP -->
         <div id="view-ftp" class="tab-view" style="display: none;">
+          <div id="ftp-missing-placeholder" style="display: none;"></div>
+          <div id="ftp-content-wrap">
           <!-- Top Overview Grid -->
           <div class="grid-stats" style="grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); margin-bottom: 20px;">
             <div class="card">

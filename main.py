@@ -48,6 +48,11 @@ DB_PATH = os.path.join(DATA_DIR, "metrics.db")
 os.makedirs(DATA_DIR, exist_ok=True)
 
 # Host execution helper
+# Host execution helper
+def check_host_binary(binary_name: str) -> bool:
+    code, stdout, _ = run_host_cmd(["which", binary_name])
+    return (code == 0 and bool(stdout.strip()))
+
 def run_host_cmd(cmd: List[str], timeout: int = 15, input_str: Optional[str] = None) -> tuple[int, str, str]:
     try:
         full_cmd = ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--"] + cmd
@@ -475,10 +480,209 @@ def parse_nginx_config(content: str) -> Dict[str, Any]:
         "roots": roots
     }
 
+
+# --- Software & Component Management API ---
+@app.get("/api/components/status")
+async def get_components_status(user: str = Depends(require_auth)):
+    # 1. Nginx
+    ng_installed = check_host_binary("nginx")
+    ng_active = False
+    ng_ver = ""
+    if ng_installed:
+        _, out_a, _ = run_host_cmd(["systemctl", "is-active", "nginx"])
+        ng_active = (out_a.strip() == "active")
+        _, _, err_v = run_host_cmd(["nginx", "-v"])
+        m = re.search(r"nginx/([0-9.]+)", err_v)
+        ng_ver = m.group(1) if m else "1.x"
+
+    # 2. PHP
+    php_installed = check_host_binary("php")
+    php_ver = ""
+    php_active = False
+    if php_installed:
+        _, out_v, _ = run_host_cmd(["php", "-v"])
+        m = re.search(r"PHP ([0-9.]+)", out_v)
+        php_ver = m.group(1) if m else "PHP"
+        _, out_fpm, _ = run_host_cmd(["bash", "-c", "systemctl is-active php*-fpm 2>/dev/null || true"])
+        php_active = ("active" in out_fpm)
+
+    # 3. Samba
+    smb_installed = check_host_binary("smbd")
+    smb_active = False
+    smb_ver = ""
+    if smb_installed:
+        _, out_a, _ = run_host_cmd(["systemctl", "is-active", "smbd"])
+        smb_active = (out_a.strip() == "active")
+        _, out_v, _ = run_host_cmd(["smbd", "-V"])
+        smb_ver = out_v.strip()
+
+    # 4. FTP (vsftpd)
+    ftp_installed = check_host_binary("vsftpd")
+    ftp_active = False
+    ftp_ver = ""
+    if ftp_installed:
+        _, out_a, _ = run_host_cmd(["systemctl", "is-active", "vsftpd"])
+        ftp_active = (out_a.strip() == "active")
+        _, out_v, _ = run_host_cmd(["vsftpd", "-v"])
+        ftp_ver = out_v.strip() or "vsftpd"
+
+    # 5. Certbot (SSL)
+    cert_installed = check_host_binary("certbot")
+    cert_ver = ""
+    if cert_installed:
+        _, out_v, _ = run_host_cmd(["certbot", "--version"])
+        cert_ver = out_v.strip() or "Certbot"
+
+    # 6. smartmontools
+    smart_installed = check_host_binary("smartctl")
+    smart_ver = ""
+    if smart_installed:
+        _, out_v, _ = run_host_cmd(["smartctl", "-V"])
+        smart_ver = out_v.splitlines()[0] if out_v else "smartctl"
+
+    # 7. UFW
+    ufw_installed = check_host_binary("ufw")
+    ufw_active = False
+    if ufw_installed:
+        _, out_u, _ = run_host_cmd(["ufw", "status"])
+        ufw_active = "active" in out_u
+
+    return {
+        "nginx": {
+            "key": "nginx",
+            "name": "Nginx Web Server",
+            "icon": "🌐",
+            "category": "Веб-сервер",
+            "desc": "Высокопроизводительный веб-сервер и обратный прокси для сайтов",
+            "installed": ng_installed,
+            "active": ng_active,
+            "version": ng_ver,
+            "tab": "nginx"
+        },
+        "php": {
+            "key": "php",
+            "name": "PHP & PHP-FPM",
+            "icon": "🐘",
+            "category": "Интерпретатор",
+            "desc": "PHP-FPM с модулями curl, mysql, mbstring, xml, zip для веб-сайтов",
+            "installed": php_installed,
+            "active": php_active,
+            "version": php_ver,
+            "tab": "nginx"
+        },
+        "samba": {
+            "key": "samba",
+            "name": "Samba (SMB/CIFS)",
+            "icon": "📁",
+            "category": "Файловый доступ",
+            "desc": "Сетевые папки для прямого доступа из Проводника Windows и macOS",
+            "installed": smb_installed,
+            "active": smb_active,
+            "version": smb_ver,
+            "tab": "samba"
+        },
+        "ftp": {
+            "key": "ftp",
+            "name": "FTP Сервер (vsftpd)",
+            "icon": "📡",
+            "category": "Файловый доступ",
+            "desc": "Быстрый и безопасный FTP-сервер для быстрой передачи файлов",
+            "installed": ftp_installed,
+            "active": ftp_active,
+            "version": ftp_ver,
+            "tab": "ftp"
+        },
+        "certbot": {
+            "key": "certbot",
+            "name": "Certbot (Let's Encrypt)",
+            "icon": "🔒",
+            "category": "Безопасность",
+            "desc": "Автоматический выпуск и автопродление бесплатных SSL сертификатов",
+            "installed": cert_installed,
+            "active": cert_installed,
+            "version": cert_ver,
+            "tab": "ssl"
+        },
+        "smartmontools": {
+            "key": "smartmontools",
+            "name": "S.M.A.R.T. (smartmontools)",
+            "icon": "💾",
+            "category": "Оборудование",
+            "desc": "Мониторинг здоровья, износа и температуры жестких дисков и SSD",
+            "installed": smart_installed,
+            "active": smart_installed,
+            "version": smart_ver,
+            "tab": "smart"
+        },
+        "ufw": {
+            "key": "ufw",
+            "name": "Фаервол UFW",
+            "icon": "🛡️",
+            "category": "Безопасность",
+            "desc": "Межсетевой экран хоста для фильтрации входящего трафика и портов",
+            "installed": ufw_installed,
+            "active": ufw_active,
+            "version": "UFW",
+            "tab": "network"
+        }
+    }
+
+@app.post("/api/components/install")
+async def install_component(request: Request, user: str = Depends(require_auth)):
+    data = await request.json()
+    component = data.get("component", "").strip().lower()
+
+    install_cmds = {
+        "nginx": "DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq nginx && systemctl enable --now nginx && mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled",
+        "php": "DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq php-fpm php-cli php-curl php-mysql php-mbstring php-xml php-zip php-gd && systemctl enable --now $(systemctl list-unit-files | grep -oE 'php[0-9.]+-fpm\\.service' | head -n 1 || echo php-fpm)",
+        "samba": "DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq samba samba-common-bin && systemctl enable --now smbd nmbd",
+        "ftp": "DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq vsftpd && systemctl enable --now vsftpd",
+        "certbot": "DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq certbot python3-certbot-nginx",
+        "smartmontools": "DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq smartmontools && systemctl enable --now smartmontools",
+        "ufw": "DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ufw"
+    }
+
+    if component not in install_cmds:
+        raise HTTPException(status_code=400, detail=f"Неизвестный компонент: {component}")
+
+    cmd_str = install_cmds[component]
+    code, stdout, stderr = run_host_cmd(["bash", "-c", cmd_str], timeout=300)
+    if code != 0:
+        raise HTTPException(status_code=500, detail=f"Ошибка установки {component}: {stderr or stdout}")
+
+    # Special post-install fixes
+    if component == "samba":
+        smb_conf = "/etc/samba/smb.conf"
+        run_host_cmd(["bash", "-c", f"if [ ! -f '{smb_conf}' ]; then touch '{smb_conf}'; fi"])
+    elif component == "ftp":
+        vs_conf = "/etc/vsftpd.conf"
+        run_host_cmd(["bash", "-c", f"if [ ! -f '{vs_conf}' ]; then echo -e 'listen=YES\\nlisten_ipv6=NO\\nanonymous_enable=NO\\nlocal_enable=YES\\nwrite_enable=YES\\n' > '{vs_conf}'; systemctl restart vsftpd; fi"])
+    elif component == "nginx":
+        run_host_cmd(["bash", "-c", "mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled && if [ ! -f /etc/nginx/sites-available/default ]; then echo 'server { listen 80 default_server; root /var/www/html; index index.html; }' > /etc/nginx/sites-available/default && ln -sf /etc/nginx/sites-available/default /etc/nginx/sites-enabled/; systemctl reload nginx; fi"])
+
+    names = {
+        "nginx": "Nginx",
+        "php": "PHP & PHP-FPM",
+        "samba": "Samba (SMB)",
+        "ftp": "FTP (vsftpd)",
+        "certbot": "Certbot (SSL)",
+        "smartmontools": "smartmontools",
+        "ufw": "UFW Фаервол"
+    }
+    return {
+        "status": True,
+        "component": component,
+        "message": f"Компонент {names.get(component, component)} успешно установлен и запущен!"
+    }
+
 @app.get("/api/nginx/sites")
 async def list_nginx_sites(user: str = Depends(require_auth)):
+    is_installed = check_host_binary("nginx")
+    if not is_installed:
+        return {"installed": False, "sites": []}
+
     if not os.path.exists(NGINX_AVAILABLE):
-        return []
+        return {"installed": True, "sites": []}
 
     sites = []
     available_files = sorted(os.listdir(NGINX_AVAILABLE))
@@ -1077,6 +1281,8 @@ async def get_journal_logs(unit: str = "", lines: int = 100, user: str = Depends
 # --- SSL / Let's Encrypt Routes ---
 @app.get("/api/ssl/certificates")
 async def get_ssl_certificates(user: str = Depends(require_auth)):
+    if not check_host_binary("certbot"):
+        return {"installed": False, "certificates": []}
     code, stdout, stderr = run_host_cmd(["certbot", "certificates"])
     certs = []
     current = {}
@@ -1119,7 +1325,7 @@ async def get_ssl_certificates(user: str = Depends(require_auth)):
             current["serial"] = line.split(":", 1)[1].strip()
     if current:
         certs.append(current)
-    return {"certificates": certs}
+    return {"installed": True, "certificates": certs}
 
 @app.post("/api/ssl/renew")
 async def renew_ssl(request: Request, user: str = Depends(require_auth)):
@@ -1163,6 +1369,7 @@ async def delete_ssl_cert(cert_name: str, user: str = Depends(require_auth)):
 # --- Network & UFW Firewall Routes ---
 @app.get("/api/network/overview")
 async def get_network_overview(user: str = Depends(require_auth)):
+    ufw_installed = check_host_binary("ufw")
     code_ufw, stdout_ufw, _ = run_host_cmd(["ufw", "status", "numbered"])
     ufw_active = "Status: active" in stdout_ufw or "Состояние: активен" in stdout_ufw
     
@@ -1288,6 +1495,8 @@ async def delete_ufw_rule(rule_id: int, user: str = Depends(require_auth)):
 # --- S.M.A.R.T. & Disks Health Routes ---
 @app.get("/api/smart/disks")
 async def get_smart_disks(user: str = Depends(require_auth)):
+    if not check_host_binary("smartctl"):
+        return {"installed": False, "devices": []}
     code, stdout, _ = run_host_cmd(["lsblk", "-b", "-J", "-o", "NAME,SIZE,TYPE,MODEL,SERIAL,ROTA,MOUNTPOINT,FSTYPE"])
     devices = []
     lsblk_data = {}
@@ -1646,6 +1855,18 @@ def parse_samba_sections(content: str) -> List[Dict[str, Any]]:
 
 @app.get("/api/samba/overview")
 async def get_samba_overview(user: str = Depends(require_auth)):
+    if not check_host_binary("smbd"):
+        return {
+            "installed": False,
+            "smbd_active": False,
+            "nmbd_active": False,
+            "version": "",
+            "ports": {"139": False, "445": False},
+            "shares": [],
+            "users": [],
+            "sessions": [],
+            "server_ip": "127.0.0.1"
+        }
     # 1. Services status
     code_smbd, out_smbd, _ = run_host_cmd(["systemctl", "is-active", "smbd"])
     code_nmbd, out_nmbd, _ = run_host_cmd(["systemctl", "is-active", "nmbd"])
@@ -1705,6 +1926,7 @@ async def get_samba_overview(user: str = Depends(require_auth)):
                     })
 
     return {
+        "installed": True,
         "smbd_active": smbd_active,
         "nmbd_active": nmbd_active,
         "version": version_str,
@@ -1932,6 +2154,16 @@ def parse_vsftpd_settings(content: str) -> Dict[str, Any]:
 
 @app.get("/api/ftp/overview")
 async def get_ftp_overview(user: str = Depends(require_auth)):
+    if not check_host_binary("vsftpd"):
+        return {
+            "installed": False,
+            "active": False,
+            "port_21": False,
+            "settings": None,
+            "users": [],
+            "server_ip": "127.0.0.1",
+            "connections_count": 0
+        }
     code, out, _ = run_host_cmd(["systemctl", "is-active", "vsftpd"])
     active = (out.strip() == "active")
 
@@ -1968,6 +2200,7 @@ async def get_ftp_overview(user: str = Depends(require_auth)):
     connections_count = max(0, len(conn_out.strip().splitlines()) - 1) if conn_out.strip() else 0
 
     return {
+        "installed": True,
         "active": active,
         "port_21": port_21,
         "settings": settings,
