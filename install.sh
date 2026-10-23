@@ -26,100 +26,124 @@ cat << "EOF"
 EOF
 echo -e "${NC}"
 
-# Проверка root прав
-if [ "$EUID" -ne 0 ]; then
-  echo -e "${YELLOW}Запуск с правами sudo...${NC}"
-  exec sudo bash "$0" "$@"
+# Проверка прав sudo / root
+if [ "$(id -u)" -ne 0 ]; then
+    if command -v sudo >/dev/null 2>&1; then
+        SUDO="sudo"
+        echo -e "${YELLOW}Для установки требуются права root. Запрос пароля sudo:${NC}"
+        $SUDO -v || { echo -e "${RED}Ошибка авторизации sudo.${NC}"; exit 1; }
+    else
+        echo -e "${RED}Ошибка: запустите установщик от имени root или установите sudo (apt install sudo).${NC}"
+        exit 1
+    fi
+else
+    SUDO=""
 fi
 
 INSTALL_DIR="/opt/ubuntu_panel"
 REPO_URL="https://github.com/GrinRonm/ubuntu_panel.git"
 
 echo -e "${BLUE}[1/5] Проверка системных пакетов и зависимостей...${NC}"
-apt-get update -qq
-apt-get install -y -qq curl git wget util-linux ufw ca-certificates >/dev/null 2>&1
+$SUDO apt-get update -qq
+$SUDO apt-get install -y -qq curl git wget util-linux ufw ca-certificates >/dev/null 2>&1
 
 # Проверка / установка Docker
 if ! command -v docker &> /dev/null; then
     echo -e "${YELLOW}Docker не найден. Установка официального Docker Engine...${NC}"
-    curl -fsSL https://get.docker.com | sh
-    systemctl enable --now docker
+    curl -fsSL https://get.docker.com | $SUDO sh
+    $SUDO systemctl enable --now docker
     echo -e "${GREEN}Docker успешно установлен!${NC}"
 else
     echo -e "${GREEN}Docker уже установлен.${NC}"
 fi
 
-# Проверка docker compose
+# Проверка docker compose plugin
 if ! docker compose version &> /dev/null; then
     echo -e "${YELLOW}Установка плагина docker-compose-plugin...${NC}"
-    apt-get install -y -qq docker-compose-plugin >/dev/null 2>&1 || true
+    $SUDO apt-get install -y -qq docker-compose-plugin >/dev/null 2>&1 || true
 fi
 
-echo -e "${BLUE}[2/5] Загрузка файлов панели в ${INSTALL_DIR}...${NC}"
+echo -e "${BLUE}[2/5] Подготовка файлов в ${INSTALL_DIR}...${NC}"
+$SUDO mkdir -p "$INSTALL_DIR"
+$SUDO chown -R "$(id -u):$(id -g)" "$INSTALL_DIR"
+
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo -e "${YELLOW}Обновление существующей установки...${NC}"
     cd "$INSTALL_DIR"
     git fetch --all -q
     git reset --hard origin/main -q
 else
-    mkdir -p "$INSTALL_DIR"
-    git clone -q "$REPO_URL" "$INSTALL_DIR"
+    if [ "$(ls -A "$INSTALL_DIR" 2>/dev/null)" ]; then
+        git clone -q "$REPO_URL" /tmp/ubuntu_panel_git
+        cp -rf /tmp/ubuntu_panel_git/* /tmp/ubuntu_panel_git/.* "$INSTALL_DIR/" 2>/dev/null || true
+        rm -rf /tmp/ubuntu_panel_git
+    else
+        git clone -q "$REPO_URL" "$INSTALL_DIR"
+    fi
     cd "$INSTALL_DIR"
 fi
 
-echo -e "${BLUE}[3/5] Настройка окружения и безопасности...${NC}"
-# Определение IP сервера
-SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
-[ -z "$SERVER_IP" ] && SERVER_IP="127.0.0.1"
+echo -e "${BLUE}[3/5] Настройка окружения и генерация учетных данных...${NC}"
 
-# Генерация пароля если не передан
-DEFAULT_PASS="admin_$(openssl rand -hex 4)"
-ADMIN_USER="${ADMIN_USER:-admin}"
-ADMIN_PASS="${ADMIN_PASS:-$DEFAULT_PASS}"
-PANEL_PORT="${PANEL_PORT:-8088}"
-SECRET_KEY=$(openssl rand -hex 32)
+# Определение локального IP
+LOCAL_IP=$(ip -4 addr show scope global 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | head -n 1)
+[ -z "$LOCAL_IP" ] && LOCAL_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+[ -z "$LOCAL_IP" ] && LOCAL_IP="127.0.0.1"
 
-if [ ! -f .env ]; then
-    cat << EOF > .env
+# Сохраняем или создаем .env
+if [ -f "$INSTALL_DIR/.env" ]; then
+    source "$INSTALL_DIR/.env"
+    echo -e "${YELLOW}Используются сохраненные учетные данные из .env${NC}"
+else
+    ADMIN_USER="${ADMIN_USER:-admin}"
+    if [ -z "$ADMIN_PASS" ]; then
+        RAND_HEX=$(openssl rand -hex 4 2>/dev/null || head -c 8 /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 8)
+        ADMIN_PASS="admin_${RAND_HEX}"
+    fi
+    PANEL_PORT="${PORT:-8088}"
+    SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | tr -dc 'a-zA-Z0-9' | head -c 32)
+
+    cat << EOF > "$INSTALL_DIR/.env"
 ADMIN_USER=${ADMIN_USER}
 ADMIN_PASS=${ADMIN_PASS}
 SECRET_KEY=${SECRET_KEY}
 PORT=${PANEL_PORT}
 EOF
-    chmod 600 .env
-else
-    # Загружаем существующие параметры
-    source .env
+    chmod 600 "$INSTALL_DIR/.env"
 fi
 
 echo -e "${BLUE}[4/5] Сборка и запуск контейнера Docker...${NC}"
-docker compose down >/dev/null 2>&1 || true
-docker compose up -d --build
+cd "$INSTALL_DIR"
+$SUDO docker compose down >/dev/null 2>&1 || true
+$SUDO docker compose up -d --build
 
-# Открытие порта в UFW если он активен
-if ufw status | grep -qw "active"; then
+# Открытие порта в UFW если он включен
+if command -v ufw >/dev/null 2>&1 && $SUDO ufw status 2>/dev/null | grep -qw "active"; then
     echo -e "${YELLOW}Открытие порта ${PANEL_PORT}/tcp в UFW...${NC}"
-    ufw allow ${PANEL_PORT}/tcp >/dev/null 2>&1 || true
+    $SUDO ufw allow ${PANEL_PORT}/tcp >/dev/null 2>&1 || true
 fi
 
-echo -e "${BLUE}[5/5] Проверка работоспособности...${NC}"
+echo -e "${BLUE}[5/5] Проверка запуска панели...${NC}"
 sleep 3
-if curl -skf "http://127.0.0.1:${PANEL_PORT}/api/auth/me" >/dev/null 2>&1 || curl -skf "http://127.0.0.1:${PANEL_PORT}/" >/dev/null 2>&1; then
-    echo -e "${GREEN}${BOLD}Панель успешно запущена и работает!${NC}"
-else
-    echo -e "${YELLOW}Контейнер запущен, инициализация завершается...${NC}"
-fi
+for i in {1..8}; do
+    if curl -s "http://127.0.0.1:${PANEL_PORT}/" >/dev/null 2>&1; then
+        break
+    fi
+    sleep 1
+done
 
 echo ""
 echo -e "${GREEN}================================================================${NC}"
 echo -e "${GREEN}${BOLD}        🎉 УСТАНОВКА УСПЕШНО ЗАВЕРШЕНА! 🎉${NC}"
 echo -e "${GREEN}================================================================${NC}"
-echo -e "${BOLD}Адрес панели:${NC}     ${CYAN}http://${SERVER_IP}:${PANEL_PORT}/${NC}"
-echo -e "${BOLD}Логин:${NC}            ${YELLOW}${ADMIN_USER}${NC}"
-echo -e "${BOLD}Пароль:${NC}           ${YELLOW}${ADMIN_PASS}${NC}"
+echo -e "${BOLD}Локальный адрес:${NC}    ${CYAN}http://${LOCAL_IP}:${PANEL_PORT}/${NC}"
+echo -e "${BOLD}Вход на сервере:${NC}    ${CYAN}http://localhost:${PANEL_PORT}/${NC}"
+echo -e "${BOLD}Логин:${NC}              ${YELLOW}${ADMIN_USER}${NC}"
+echo -e "${BOLD}Пароль:${NC}             ${YELLOW}${ADMIN_PASS}${NC}"
 echo -e "${GREEN}================================================================${NC}"
-echo -e "${BOLD}Папка проекта:${NC}    ${INSTALL_DIR}"
-echo -e "${BOLD}Перезапуск:${NC}       cd ${INSTALL_DIR} && docker compose restart"
-echo -e "${BOLD}Просмотр логов:${NC}   cd ${INSTALL_DIR} && docker compose logs -f"
+echo -e "${BOLD}Папка проекта:${NC}      ${INSTALL_DIR}"
+echo -e "${BOLD}Файл настроек:${NC}      ${INSTALL_DIR}/.env"
+echo -e "${BOLD}Перезапуск панели:${NC}  cd ${INSTALL_DIR} && sudo docker compose restart"
+echo -e "${BOLD}Просмотр логов:${NC}     cd ${INSTALL_DIR} && sudo docker compose logs -f"
 echo -e "${GREEN}================================================================${NC}"
 echo ""
