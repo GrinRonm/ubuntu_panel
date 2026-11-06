@@ -32,7 +32,11 @@ const app = {
   currentEditingNginx: null,
   
   // Logs State
-  currentLogType: 'access',
+  currentLogType: 'journal',
+  logAutoRefreshTimer: null,
+  activeDockerContainers: [],
+  selectedLogUnit: 'beget-ddns',
+  token: localStorage.getItem('serverdeck_token') || '',
   
   // User Management State
   currentEditingUser: null,
@@ -114,6 +118,10 @@ const app = {
         });
         const data = await res.json();
         if (res.ok && data.status) {
+          if (data.token) {
+            localStorage.setItem('serverdeck_token', data.token);
+            this.token = data.token;
+          }
           this.showApp();
         } else {
           errEl.innerText = data.detail || 'Ошибка авторизации';
@@ -128,8 +136,11 @@ const app = {
     // Logout
     document.getElementById('btn-logout').addEventListener('click', async () => {
       await fetch('/api/auth/logout', { method: 'POST' });
+      localStorage.removeItem('serverdeck_token');
+      this.token = '';
       if (this.statsWs) this.statsWs.close();
       if (this.termWs) this.termWs.close();
+      if (this.logAutoRefreshTimer) clearInterval(this.logAutoRefreshTimer);
       if (this.historyTimer) clearInterval(this.historyTimer);
       this.showLogin();
     });
@@ -228,11 +239,18 @@ const app = {
     document.getElementById('btn-submit-cron').addEventListener('click', () => this.submitCronJob());
 
     // Logs actions
-    document.getElementById('btn-refresh-logs').addEventListener('click', () => this.fetchLogs());
-    document.getElementById('log-filter-input').addEventListener('input', () => this.fetchLogs());
+    const btnRefLogs = document.getElementById('btn-refresh-logs');
+    if (btnRefLogs) btnRefLogs.addEventListener('click', () => this.fetchLogs());
+    const filterInput = document.getElementById('log-filter-input');
+    if (filterInput) filterInput.addEventListener('input', () => this.fetchLogs());
+    const linesSelect = document.getElementById('log-lines-select');
+    if (linesSelect) linesSelect.addEventListener('change', () => this.fetchLogs());
+    const autoCheck = document.getElementById('log-autorefresh-check');
+    if (autoCheck) autoCheck.addEventListener('change', (e) => this.toggleLogAutoRefresh(e.target.checked));
 
     // Terminal reconnect
-    document.getElementById('btn-reconnect-terminal').addEventListener('click', () => this.initTerminal());
+    const btnReconnTerm = document.getElementById('btn-reconnect-terminal');
+    if (btnReconnTerm) btnReconnTerm.addEventListener('click', () => this.initTerminal());
 
     // Samba actions
     const btnNewSambaShare = document.getElementById('btn-open-new-samba-share');
@@ -325,19 +343,31 @@ const app = {
     if (tabName === 'processes') this.loadProcesses();
     if (tabName === 'files') this.loadFiles(this.currentFilePath);
     if (tabName === 'users') this.loadUsers();
-    if (tabName === 'logs') this.fetchLogs();
+    if (tabName === 'logs') {
+      this.renderLogExtraControls();
+      this.fetchLogs();
+    }
     if (tabName === 'terminal') {
       setTimeout(() => {
-        if (!this.term) this.initTerminal();
-        if (this.fitAddon) this.fitAddon.fit();
-      }, 50);
+        const container = document.getElementById('terminal-container');
+        if (!this.term || !this.termWs || this.termWs.readyState === WebSocket.CLOSED) {
+          this.initTerminal();
+        } else {
+          if (this.fitAddon && container && container.clientWidth > 0) {
+            try { this.fitAddon.fit(); } catch(e){}
+            this.sendTermResize();
+          }
+          if (this.term) this.term.focus();
+        }
+      }, 60);
     }
   },
 
   // WebSocket for Live System Stats (Optimized DOM updates, zero lag)
   connectStatsWs() {
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${proto}//${window.location.host}/ws/system/stats`;
+    const token = this.token || localStorage.getItem('serverdeck_token') || '';
+    const wsUrl = `${proto}//${window.location.host}/ws/system/stats?token=${encodeURIComponent(token)}`;
     this.statsWs = new WebSocket(wsUrl);
 
     this.statsWs.onmessage = (event) => {
@@ -1480,47 +1510,224 @@ const app = {
   },
 
   // --- Logs Module ---
-  switchLogType(type) {
+  async switchLogType(type) {
     this.currentLogType = type;
-    document.querySelectorAll('#view-logs button.btn-secondary').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('#log-type-buttons button').forEach(b => b.classList.remove('active'));
     const btn = document.getElementById(`btn-log-${type}`);
     if (btn) btn.classList.add('active');
-    this.fetchLogs();
+
+    this.renderLogExtraControls();
+    await this.fetchLogs();
+  },
+
+  async renderLogExtraControls() {
+    const extra = document.getElementById('log-extra-controls');
+    if (!extra) return;
+    extra.innerHTML = '';
+
+    if (this.currentLogType === 'docker') {
+      if (!this.activeDockerContainers || !this.activeDockerContainers.length) {
+        try {
+          const res = await fetch('/api/services/docker');
+          this.activeDockerContainers = await res.json();
+        } catch (e) {}
+      }
+      const select = document.createElement('select');
+      select.id = 'log-docker-select';
+      select.className = 'form-input';
+      select.style.padding = '6px 8px';
+      select.style.fontSize = '0.82rem';
+      (this.activeDockerContainers || []).forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.name || c.id;
+        opt.innerText = `${c.name} (${c.status || 'docker'})`;
+        select.appendChild(opt);
+      });
+      select.addEventListener('change', () => this.fetchLogs());
+      extra.appendChild(select);
+    } else if (this.currentLogType === 'service') {
+      const input = document.createElement('input');
+      input.id = 'log-service-unit-input';
+      input.className = 'form-input';
+      input.placeholder = 'Служба (beget-ddns, nginx, ssh)...';
+      input.value = this.selectedLogUnit || 'beget-ddns';
+      input.style.width = '220px';
+      input.style.padding = '6px 10px';
+      input.style.fontSize = '0.82rem';
+      input.addEventListener('change', () => {
+        this.selectedLogUnit = input.value.trim();
+        this.fetchLogs();
+      });
+      extra.appendChild(input);
+    } else if (this.currentLogType === 'syslog') {
+      const select = document.createElement('select');
+      select.id = 'log-syslog-select';
+      select.className = 'form-input';
+      select.style.padding = '6px 8px';
+      select.style.fontSize = '0.82rem';
+      [
+        { id: 'syslog', label: 'Syslog (/var/log/syslog)' },
+        { id: 'auth', label: 'Auth (/var/log/auth.log)' },
+        { id: 'dmesg', label: 'Dmesg (Kernel)' },
+        { id: 'dpkg', label: 'DPKG (/var/log/dpkg.log)' }
+      ].forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        opt.innerText = item.label;
+        select.appendChild(opt);
+      });
+      select.addEventListener('change', () => this.fetchLogs());
+      extra.appendChild(select);
+    }
   },
 
   async fetchLogs() {
     const viewer = document.getElementById('log-viewer');
-    const filter = document.getElementById('log-filter-input').value;
-    viewer.innerText = 'Загрузка логов...';
+    const filterEl = document.getElementById('log-filter-input');
+    const linesEl = document.getElementById('log-lines-select');
+    const statusText = document.getElementById('log-status-text');
+    if (!viewer) return;
+
+    const filter = filterEl ? filterEl.value.trim() : '';
+    const lines = linesEl ? parseInt(linesEl.value, 10) || 150 : 150;
+
+    let url = '';
+    let sourceLabel = '';
+
+    if (this.currentLogType === 'journal') {
+      url = `/api/logs/journal?lines=${lines}&filter_term=${encodeURIComponent(filter)}`;
+      sourceLabel = 'Системный журнал (journalctl)';
+    } else if (this.currentLogType === 'access' || this.currentLogType === 'error') {
+      url = `/api/logs/nginx?log_type=${this.currentLogType}&lines=${lines}&filter_term=${encodeURIComponent(filter)}`;
+      sourceLabel = `Nginx ${this.currentLogType === 'access' ? 'Access' : 'Error'} Log`;
+    } else if (this.currentLogType === 'docker') {
+      const select = document.getElementById('log-docker-select');
+      const container = select ? select.value : '';
+      if (!container) {
+        viewer.innerText = 'Контейнеры не выбраны или отсутствуют';
+        return;
+      }
+      url = `/api/logs/docker/${encodeURIComponent(container)}?lines=${lines}&filter_term=${encodeURIComponent(filter)}`;
+      sourceLabel = `Docker: ${container}`;
+    } else if (this.currentLogType === 'service') {
+      const input = document.getElementById('log-service-unit-input');
+      const unit = input ? input.value.trim() : (this.selectedLogUnit || 'beget-ddns');
+      url = `/api/logs/journal?unit=${encodeURIComponent(unit)}&lines=${lines}&filter_term=${encodeURIComponent(filter)}`;
+      sourceLabel = `Служба: ${unit}`;
+    } else if (this.currentLogType === 'syslog') {
+      const select = document.getElementById('log-syslog-select');
+      const name = select ? select.value : 'syslog';
+      url = `/api/logs/system?name=${encodeURIComponent(name)}&lines=${lines}&filter_term=${encodeURIComponent(filter)}`;
+      sourceLabel = `Системный лог: ${name}`;
+    } else {
+      url = `/api/logs/journal?lines=${lines}&filter_term=${encodeURIComponent(filter)}`;
+      sourceLabel = 'Системный журнал';
+    }
 
     try {
-      let url = '';
-      if (this.currentLogType === 'access' || this.currentLogType === 'error') {
-        url = `/api/logs/nginx?log_type=${this.currentLogType}&lines=150&filter_term=${encodeURIComponent(filter)}`;
-      } else if (this.currentLogType === 'journal') {
-        url = `/api/logs/journal?lines=150`;
-      } else if (this.currentLogType === 'beget') {
-        url = `/api/logs/journal?unit=beget-ddns&lines=100`;
-      }
-
       const res = await fetch(url);
+      if (!res.ok) {
+        viewer.innerText = `Ошибка HTTP ${res.status}: ${res.statusText}`;
+        return;
+      }
       const data = await res.json();
-      viewer.innerText = (data.lines && data.lines.length) ? data.lines.join('\n') : 'Логи пусты';
+      const list = data.lines || [];
+      viewer.innerText = list.length ? list.join('\n') : 'Логи пусты';
       viewer.scrollTop = viewer.scrollHeight;
+      if (statusText) {
+        statusText.innerText = `Источник: ${sourceLabel} | Получено строк: ${list.length} | Время: ${new Date().toLocaleTimeString()}`;
+      }
     } catch (err) {
       viewer.innerText = 'Ошибка получения логов: ' + err.message;
+      if (statusText) {
+        statusText.innerText = `Ошибка соединения: ${err.message}`;
+      }
+    }
+  },
+
+  copyLogs() {
+    const viewer = document.getElementById('log-viewer');
+    if (!viewer) return;
+    navigator.clipboard.writeText(viewer.innerText)
+      .then(() => this.showToast('Логи скопированы в буфер обмена', 'success'))
+      .catch(() => this.showToast('Не удалось скопировать', 'error'));
+  },
+
+  clearLogsView() {
+    const viewer = document.getElementById('log-viewer');
+    if (viewer) viewer.innerText = '';
+  },
+
+  toggleLogAutoRefresh(enabled) {
+    if (this.logAutoRefreshTimer) {
+      clearInterval(this.logAutoRefreshTimer);
+      this.logAutoRefreshTimer = null;
+    }
+    const indicator = document.getElementById('log-live-indicator');
+    if (enabled) {
+      if (indicator) indicator.style.display = 'inline';
+      this.logAutoRefreshTimer = setInterval(() => {
+        if (this.activeTab === 'logs') {
+          this.fetchLogs();
+        }
+      }, 3000);
+    } else {
+      if (indicator) indicator.style.display = 'none';
     }
   },
 
   // --- Web Terminal Module ---
   initTerminal() {
     const container = document.getElementById('terminal-container');
+    if (!container) return;
+
+    const badge = document.getElementById('terminal-status-badge');
+    if (badge) {
+      badge.className = 'badge badge-amber';
+      badge.innerText = 'Подключение...';
+    }
+
+    // Clean up previous instance
+    if (this.termWs) {
+      try {
+        this.termWs.onclose = null;
+        this.termWs.close();
+      } catch (e) {}
+      this.termWs = null;
+    }
+    if (this.term) {
+      try {
+        this.term.dispose();
+      } catch (e) {}
+      this.term = null;
+      this.fitAddon = null;
+    }
+
     container.innerHTML = '';
+
+    if (typeof Terminal === 'undefined') {
+      container.innerHTML = `
+        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); text-align: center; padding: 40px;">
+          <div style="font-size: 2.2rem; margin-bottom: 12px; color: var(--accent-rose);">⚠️</div>
+          <h3 style="color: var(--text-main); margin-bottom: 8px;">Библиотека терминала не загружена</h3>
+          <p style="max-width: 480px; font-size: 0.88rem; margin-bottom: 20px;">
+            Не удалось загрузить xterm.js. Проверьте доступность локальных файлов или обновите страницу.
+          </p>
+          <button class="btn btn-primary" onclick="app.reloadTerminalScripts()">Повторить загрузку</button>
+        </div>
+      `;
+      if (badge) {
+        badge.className = 'badge badge-rose';
+        badge.innerText = 'Ошибка';
+      }
+      return;
+    }
 
     this.term = new Terminal({
       cursorBlink: true,
       fontFamily: '"JetBrains Mono", monospace',
       fontSize: 14,
+      convertEol: true,
       theme: {
         background: '#070a10',
         foreground: '#e2e8f0',
@@ -1537,26 +1744,62 @@ const app = {
       }
     });
 
-    this.fitAddon = new FitAddon.FitAddon();
-    this.term.loadAddon(this.fitAddon);
+    const FitClass = (window.FitAddon && window.FitAddon.FitAddon) || window.FitAddon;
+    if (FitClass) {
+      try {
+        this.fitAddon = new FitClass();
+        this.term.loadAddon(this.fitAddon);
+      } catch (e) {
+        console.warn('Could not initialize FitAddon:', e);
+      }
+    }
+
     this.term.open(container);
-    this.fitAddon.fit();
+
+    requestAnimationFrame(() => {
+      if (this.fitAddon && container.clientWidth > 0 && container.clientHeight > 0) {
+        try {
+          this.fitAddon.fit();
+        } catch (e) {}
+      }
+      if (this.term) this.term.focus();
+    });
 
     const proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${proto}//${window.location.host}/ws/terminal`;
+    const token = this.token || localStorage.getItem('serverdeck_token') || '';
+    const wsUrl = `${proto}//${window.location.host}/ws/terminal?token=${encodeURIComponent(token)}`;
     this.termWs = new WebSocket(wsUrl);
 
     this.termWs.onopen = () => {
+      if (badge) {
+        badge.className = 'badge badge-emerald';
+        badge.innerText = 'Подключено';
+      }
       this.term.write('\r\n\x1b[32mПодключение к хост-терминалу установлено!\x1b[0m\r\n\r\n');
       this.sendTermResize();
     };
 
     this.termWs.onmessage = (e) => {
-      this.term.write(e.data);
+      if (this.term) {
+        this.term.write(e.data);
+      }
     };
 
-    this.termWs.onclose = () => {
-      this.term.write('\r\n\x1b[31mСессия терминала закрыта.\x1b[0m\r\n');
+    this.termWs.onerror = () => {
+      if (badge) {
+        badge.className = 'badge badge-rose';
+        badge.innerText = 'Ошибка связи';
+      }
+    };
+
+    this.termWs.onclose = (ev) => {
+      if (badge) {
+        badge.className = 'badge badge-rose';
+        badge.innerText = 'Отключено';
+      }
+      if (this.term) {
+        this.term.write('\r\n\x1b[31mСессия терминала закрыта (код: ' + ev.code + ').\x1b[0m\r\n');
+      }
     };
 
     this.term.onData((data) => {
@@ -1565,20 +1808,48 @@ const app = {
       }
     });
 
-    window.addEventListener('resize', () => {
-      if (this.activeTab === 'terminal' && this.fitAddon) {
-        this.fitAddon.fit();
-        this.sendTermResize();
-      }
-    });
+    if (!this._termResizeListener) {
+      this._termResizeListener = () => {
+        if (this.activeTab === 'terminal' && this.fitAddon && container.clientWidth > 0) {
+          try {
+            this.fitAddon.fit();
+          } catch (e) {}
+          this.sendTermResize();
+        }
+      };
+      window.addEventListener('resize', this._termResizeListener);
+    }
+  },
+
+  clearTerminal() {
+    if (this.term) {
+      this.term.clear();
+      this.term.focus();
+    }
+  },
+
+  reloadTerminalScripts() {
+    const script = document.createElement('script');
+    script.src = '/static/vendor/xterm/xterm.js?v=' + Date.now();
+    script.onload = () => {
+      const fitScript = document.createElement('script');
+      fitScript.src = '/static/vendor/xterm/xterm-addon-fit.js?v=' + Date.now();
+      fitScript.onload = () => {
+        this.initTerminal();
+      };
+      document.body.appendChild(fitScript);
+    };
+    document.body.appendChild(script);
   },
 
   sendTermResize() {
     if (this.term && this.termWs && this.termWs.readyState === WebSocket.OPEN) {
+      const cols = this.term.cols || 80;
+      const rows = this.term.rows || 24;
       this.termWs.send(JSON.stringify({
         type: 'resize',
-        cols: this.term.cols,
-        rows: this.term.rows
+        cols: cols,
+        rows: rows
       }));
     }
   },
@@ -2867,11 +3138,13 @@ ${err.message}`);
 
 // --- Modals & Toasts ---
   openModal(id) {
-    document.getElementById(id).classList.add('open');
+    const el = document.getElementById(id);
+    if (el) el.classList.add('open');
   },
 
   closeModal(id) {
-    document.getElementById(id).classList.remove('open');
+    const el = document.getElementById(id);
+    if (el) el.classList.remove('open');
   },
 
   showToast(message, type = 'info') {

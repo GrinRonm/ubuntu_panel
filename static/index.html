@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ServerDeck — Управление сервером</title>
   <link rel="stylesheet" href="/static/app.css">
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css">
+  <link rel="stylesheet" href="/static/vendor/xterm/xterm.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%2306b6d4'><path d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/></svg>">
 </head>
 <body>
@@ -1038,29 +1038,66 @@
 
 <div id="view-logs" class="tab-view" style="display: none;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; flex-wrap: wrap;">
-            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-              <button id="btn-log-access" class="btn btn-secondary btn-sm active" onclick="app.switchLogType('access')">Nginx Access Log</button>
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;" id="log-type-buttons">
+              <button id="btn-log-journal" class="btn btn-secondary btn-sm active" onclick="app.switchLogType('journal')">Системный журнал (journalctl)</button>
+              <button id="btn-log-access" class="btn btn-secondary btn-sm" onclick="app.switchLogType('access')">Nginx Access Log</button>
               <button id="btn-log-error" class="btn btn-secondary btn-sm" onclick="app.switchLogType('error')">Nginx Error Log</button>
-              <button id="btn-log-journal" class="btn btn-secondary btn-sm" onclick="app.switchLogType('journal')">System Journal</button>
-              <button id="btn-log-beget" class="btn btn-secondary btn-sm" onclick="app.switchLogType('beget')">Beget DDNS Log</button>
+              <button id="btn-log-docker" class="btn btn-secondary btn-sm" onclick="app.switchLogType('docker')">Docker Контейнеры</button>
+              <button id="btn-log-service" class="btn btn-secondary btn-sm" onclick="app.switchLogType('service')">Служба (Unit)</button>
+              <button id="btn-log-syslog" class="btn btn-secondary btn-sm" onclick="app.switchLogType('syslog')">Syslog / Auth</button>
             </div>
-            <div style="display: flex; gap: 10px; align-items: center;">
-              <input type="text" id="log-filter-input" class="form-input" placeholder="Фильтр по тексту..." style="width: 200px; padding: 6px 10px; font-size: 0.82rem;">
+            
+            <div style="display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+              <div id="log-extra-controls" style="display: flex; gap: 8px; align-items: center;"></div>
+
+              <select id="log-lines-select" class="form-input" style="width: 110px; padding: 6px 8px; font-size: 0.82rem;">
+                <option value="50">50 строк</option>
+                <option value="150" selected>150 строк</option>
+                <option value="300">300 строк</option>
+                <option value="500">500 строк</option>
+                <option value="1000">1000 строк</option>
+              </select>
+
+              <input type="text" id="log-filter-input" class="form-input" placeholder="Поиск в логах..." style="width: 170px; padding: 6px 10px; font-size: 0.82rem;">
+
+              <label style="display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text-muted); cursor: pointer; user-select: none;">
+                <input type="checkbox" id="log-autorefresh-check" style="accent-color: var(--accent-cyan); cursor: pointer;">
+                Авто (3с)
+              </label>
+
               <button id="btn-refresh-logs" class="btn btn-primary btn-sm">⟳ Обновить</button>
+              <button id="btn-copy-logs" class="btn btn-secondary btn-sm" onclick="app.copyLogs()" title="Скопировать логи в буфер">📋</button>
+              <button id="btn-clear-logs" class="btn btn-secondary btn-sm" onclick="app.clearLogsView()" title="Очистить просмотр">✕</button>
             </div>
           </div>
+
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; padding: 0 4px;">
+            <span id="log-status-text" style="font-size: 0.78rem; color: var(--text-muted);">
+              Источник: Системный журнал (journalctl) | Строк: 0
+            </span>
+            <span id="log-live-indicator" style="font-size: 0.75rem; color: var(--accent-emerald); display: none;">
+              ● Автообновление активно
+            </span>
+          </div>
+
           <div class="card" style="padding: 0;">
-            <pre id="log-viewer" style="height: 600px; overflow-y: auto; padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; line-height: 1.6; color: #cbd5e1; background: #070a10; border-radius: var(--radius-md);"></pre>
+            <pre id="log-viewer" style="height: 600px; overflow-y: auto; padding: 16px; font-family: 'JetBrains Mono', monospace; font-size: 0.82rem; line-height: 1.6; color: #cbd5e1; background: #070a10; border-radius: var(--radius-md); white-space: pre-wrap; word-break: break-all;"></pre>
           </div>
         </div>
 
         <!-- Tab: Web Terminal -->
         <div id="view-terminal" class="tab-view" style="display: none;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
-            <span style="font-size: 0.88rem; color: var(--text-muted);">
-              Интерактивная консоль Linux (bash root). Поддерживает <code>htop</code>, <code>nano</code>, цвета и горячие клавиши.
-            </span>
-            <button id="btn-reconnect-terminal" class="btn btn-secondary btn-sm">Переподключить</button>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+              <span style="font-size: 0.88rem; color: var(--text-muted);">
+                Интерактивная консоль Linux (bash root). Поддерживает <code>htop</code>, <code>nano</code>, цвета и горячие клавиши.
+              </span>
+              <span id="terminal-status-badge" class="badge badge-emerald">Подключено</span>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button id="btn-clear-terminal" class="btn btn-secondary btn-sm" onclick="app.clearTerminal()">Очистить</button>
+              <button id="btn-reconnect-terminal" class="btn btn-primary btn-sm">Переподключить</button>
+            </div>
           </div>
           <div id="terminal-container"></div>
         </div>
@@ -1561,12 +1598,41 @@
     </div>
   </div>
 
+  <!-- Software Hub Modal -->
+  <div id="modal-software-hub" class="modal-overlay">
+    <div class="modal" style="max-width: 880px;">
+      <div class="modal-header">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <div class="stat-icon icon-cpu" style="width: 38px; height: 38px; font-size: 1.25rem;">📦</div>
+          <div>
+            <h3 class="modal-title">Центр компонентов сервера</h3>
+            <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 2px;">
+              Управление установкой и состоянием веб-серверов, баз данных и системных служб в 1 клик
+            </p>
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" onclick="app.closeModal('modal-software-hub')">✕</button>
+      </div>
+      <div class="modal-body" style="padding: 20px;">
+        <div id="software-hub-cards-grid" class="software-full-grid">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.8rem; color: var(--text-muted);">
+          💡 Компоненты устанавливаются напрямую на хост через официальные репозитории APT
+        </span>
+        <button class="btn btn-secondary" onclick="app.closeModal('modal-software-hub')">Закрыть</button>
+      </div>
+    </div>
+  </div>
+
 <!-- Toast Container -->
   <div id="toast-container"></div>
 
   <!-- Scripts -->
-  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+  <script src="/static/vendor/xterm/xterm.js"></script>
+  <script src="/static/vendor/xterm/xterm-addon-fit.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

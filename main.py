@@ -383,7 +383,11 @@ async def system_history(range_val: str = Query("1h", alias="range"), user: str 
 @app.websocket("/ws/system/stats")
 async def ws_system_stats(websocket: WebSocket):
     await websocket.accept()
-    token = websocket.cookies.get(COOKIE_NAME)
+    token = (
+        websocket.cookies.get(COOKIE_NAME)
+        or websocket.query_params.get("token")
+        or websocket.headers.get("Authorization", "").replace("Bearer ", "")
+    )
     valid = False
     if token:
         try:
@@ -1255,28 +1259,89 @@ async def file_upload(path: str = Form(...), file: UploadFile = File(...), user:
 
 # --- System Logs Routes ---
 @app.get("/api/logs/nginx")
-async def get_nginx_logs(log_type: str = "access", lines: int = 100, filter_term: str = "", user: str = Depends(require_auth)):
-    filename = "access.log" if log_type == "access" else "error.log"
-    log_path = f"/var/log/nginx/{filename}"
+async def get_nginx_logs(log_type: str = "access", file: str = "", lines: int = 150, filter_term: str = "", user: str = Depends(require_auth)):
+    if file:
+        safe_file = os.path.basename(file)
+        log_path = f"/var/log/nginx/{safe_file}"
+    else:
+        filename = "access.log" if log_type == "access" else "error.log"
+        log_path = f"/var/log/nginx/{filename}"
     if not os.path.exists(log_path):
-        return {"lines": [f"Файл {log_path} не найден"]}
+        return {"lines": [f"Файл {log_path} не найден"], "path": log_path}
     try:
         cmd = ["tail", "-n", str(lines * 2), log_path]
         res = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
         all_lines = res.stdout.splitlines()
         if filter_term:
             all_lines = [l for l in all_lines if filter_term.lower() in l.lower()]
-        return {"lines": all_lines[-lines:]}
+        return {"lines": all_lines[-lines:], "path": log_path}
     except Exception as e:
-        return {"lines": [str(e)]}
+        return {"lines": [str(e)], "path": log_path}
+
+@app.get("/api/logs/nginx/files")
+async def list_nginx_log_files(user: str = Depends(require_auth)):
+    files = []
+    log_dir = "/var/log/nginx"
+    if os.path.isdir(log_dir):
+        try:
+            for f in sorted(os.listdir(log_dir)):
+                if f.endswith(".log"):
+                    p = os.path.join(log_dir, f)
+                    size = os.path.getsize(p) if os.path.exists(p) else 0
+                    files.append({"name": f, "size": size})
+        except Exception:
+            pass
+    return {"files": files}
 
 @app.get("/api/logs/journal")
-async def get_journal_logs(unit: str = "", lines: int = 100, user: str = Depends(require_auth)):
-    cmd = ["journalctl", "-n", str(lines), "--no-pager"]
+async def get_journal_logs(unit: str = "", lines: int = 150, filter_term: str = "", user: str = Depends(require_auth)):
+    cmd = ["journalctl", "-n", str(lines * 2 if filter_term else lines), "--no-pager"]
     if unit:
-        cmd.extend(["-u", unit])
+        cmd.extend(["-u", unit.strip()])
     code, stdout, stderr = run_host_cmd(cmd)
-    return {"lines": (stdout or stderr).splitlines()}
+    raw = stdout or stderr or ""
+    all_lines = raw.splitlines()
+    if filter_term:
+        all_lines = [l for l in all_lines if filter_term.lower() in l.lower()]
+    return {"lines": all_lines[-lines:] if all_lines else ["Журнал пуст"], "unit": unit}
+
+@app.get("/api/logs/docker/{container_id}")
+async def get_docker_logs(container_id: str, lines: int = 150, filter_term: str = "", user: str = Depends(require_auth)):
+    try:
+        import docker
+        client = docker.DockerClient(base_url="unix://var/run/docker.sock")
+        container = client.containers.get(container_id)
+        raw_logs = container.logs(tail=lines * 2, timestamps=True).decode("utf-8", errors="replace")
+        all_lines = raw_logs.splitlines()
+        if filter_term:
+            all_lines = [l for l in all_lines if filter_term.lower() in l.lower()]
+        return {"lines": all_lines[-lines:] if all_lines else ["Логи контейнера пусты"], "container": container_id}
+    except Exception as e:
+        return {"lines": [f"Ошибка чтения логов контейнера: {e}"], "container": container_id}
+
+@app.get("/api/logs/system")
+async def get_system_log(name: str = "syslog", lines: int = 150, filter_term: str = "", user: str = Depends(require_auth)):
+    allowed = {
+        "syslog": "/var/log/syslog",
+        "auth": "/var/log/auth.log",
+        "dmesg": "/var/log/dmesg",
+        "dpkg": "/var/log/dpkg.log",
+        "ufw": "/var/log/ufw.log"
+    }
+    log_path = allowed.get(name, "/var/log/syslog")
+    if not os.path.exists(log_path):
+        code, stdout, stderr = run_host_cmd(["journalctl", "-n", str(lines * 2 if filter_term else lines), "--no-pager"])
+        all_lines = (stdout or stderr or "").splitlines()
+    else:
+        try:
+            cmd = ["tail", "-n", str(lines * 2), log_path]
+            res = subprocess.run(cmd, capture_output=True, text=True, errors="replace")
+            all_lines = res.stdout.splitlines()
+        except Exception as e:
+            return {"lines": [str(e)], "file": log_path}
+    if filter_term:
+        all_lines = [l for l in all_lines if filter_term.lower() in l.lower()]
+    return {"lines": all_lines[-lines:] if all_lines else [f"Лог {name} пуст"], "file": log_path}
 
 # --- SSL / Let's Encrypt Routes ---
 @app.get("/api/ssl/certificates")
@@ -2313,7 +2378,11 @@ async def test_ftp_endpoint(request: Request, user: str = Depends(require_auth))
 @app.websocket("/ws/terminal")
 async def ws_terminal(websocket: WebSocket):
     await websocket.accept()
-    token = websocket.cookies.get(COOKIE_NAME)
+    token = (
+        websocket.cookies.get(COOKIE_NAME)
+        or websocket.query_params.get("token")
+        or websocket.headers.get("Authorization", "").replace("Bearer ", "")
+    )
     valid = False
     if token:
         try:
@@ -2326,11 +2395,24 @@ async def ws_terminal(websocket: WebSocket):
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    try:
-        pty_cmd = ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "/bin/bash", "-l"]
-        pty_proc = ptyprocess.PtyProcessUnicode.spawn(pty_cmd, dimensions=(24, 80))
-    except Exception as e:
-        await websocket.send_text(f"\r\nОшибка запуска терминала: {e}\r\n")
+    pty_proc = None
+    commands_to_try = [
+        ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "/bin/bash", "-l"],
+        ["nsenter", "-t", "1", "-m", "-u", "-i", "-n", "-p", "--", "/bin/sh", "-l"],
+        ["/bin/bash", "-l"],
+        ["/bin/sh", "-l"]
+    ]
+    last_err = ""
+    for pty_cmd in commands_to_try:
+        try:
+            pty_proc = ptyprocess.PtyProcessUnicode.spawn(pty_cmd, dimensions=(24, 80))
+            break
+        except Exception as e:
+            last_err = str(e)
+            pty_proc = None
+
+    if not pty_proc:
+        await websocket.send_text(f"\r\n\x1b[31mОшибка запуска терминала: {last_err}\x1b[0m\r\n")
         await websocket.close()
         return
 
@@ -2339,9 +2421,11 @@ async def ws_terminal(websocket: WebSocket):
     async def pty_to_ws():
         try:
             while pty_proc.isalive():
-                data = await loop.run_in_executor(None, pty_proc.read, 1024)
+                data = await loop.run_in_executor(None, pty_proc.read, 2048)
                 if data:
                     await websocket.send_text(data)
+        except (EOFError, WebSocketDisconnect, asyncio.CancelledError):
+            pass
         except Exception:
             pass
 
@@ -2349,16 +2433,21 @@ async def ws_terminal(websocket: WebSocket):
         try:
             while True:
                 msg = await websocket.receive_text()
-                if msg.startswith('{"type":"resize"'):
+                trimmed = msg.strip()
+                if trimmed.startswith("{") and trimmed.endswith("}"):
                     try:
-                        r = json.loads(msg)
-                        cols = int(r.get("cols", 80))
-                        rows = int(r.get("rows", 24))
-                        pty_proc.setwinsize(rows, cols)
-                        continue
+                        obj = json.loads(trimmed)
+                        if isinstance(obj, dict) and obj.get("type") == "resize":
+                            cols = int(obj.get("cols", 80))
+                            rows = int(obj.get("rows", 24))
+                            if cols > 0 and rows > 0:
+                                pty_proc.setwinsize(rows, cols)
+                            continue
                     except Exception:
                         pass
                 pty_proc.write(msg)
+        except (WebSocketDisconnect, asyncio.CancelledError):
+            pass
         except Exception:
             pass
 
@@ -2373,7 +2462,8 @@ async def ws_terminal(websocket: WebSocket):
         p.cancel()
 
     try:
-        pty_proc.terminate(force=True)
+        if pty_proc.isalive():
+            pty_proc.terminate(force=True)
     except Exception:
         pass
 
