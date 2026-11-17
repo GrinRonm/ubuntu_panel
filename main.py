@@ -2374,6 +2374,185 @@ async def test_ftp_endpoint(request: Request, user: str = Depends(require_auth))
         }
 
 
+# --- Stalwart Mail Server Management (ae0.ru) ---
+
+def get_stalwart_status():
+    installed = (
+        check_host_binary("stalwart")
+        or os.path.exists(os.path.join(HOST_ROOT, "usr/local/bin/stalwart"))
+        or os.path.exists("/usr/local/bin/stalwart")
+    )
+    if not installed:
+        return {
+            "installed": False,
+            "active": False,
+            "version": None,
+            "pid": None,
+            "uptime": None,
+            "memory_mb": None,
+            "domain": "ae0.ru",
+            "hostname": "mail.ae0.ru",
+            "webadmin_url": "https://mail.ae0.ru/admin",
+            "local_admin_url": "http://192.168.0.103:8080/admin",
+            "admin_user": "admin",
+            "recovery_pass": "Griha2901!"
+        }
+
+    # Version check
+    _, ver_out, _ = run_host_cmd(["/usr/local/bin/stalwart", "--version"])
+    version = ver_out.strip() or "v1.1.1"
+
+    # Systemd active check
+    code, out, _ = run_host_cmd(["systemctl", "is-active", "stalwart"])
+    active = (out.strip() == "active")
+
+    pid = None
+    uptime = None
+    memory_mb = None
+    if active:
+        _, show_out, _ = run_host_cmd(["systemctl", "show", "stalwart", "--property=MainPID,ActiveEnterTimestamp"])
+        for line in show_out.splitlines():
+            if line.startswith("MainPID="):
+                try:
+                    p_val = int(line.split("=")[1])
+                    if p_val > 0:
+                        pid = p_val
+                except Exception:
+                    pass
+            elif line.startswith("ActiveEnterTimestamp="):
+                uptime = line.split("=", 1)[1]
+        if pid:
+            try:
+                p = psutil.Process(pid)
+                memory_mb = round(p.memory_info().rss / (1024 * 1024), 1)
+            except Exception:
+                pass
+
+    return {
+        "installed": True,
+        "active": active,
+        "version": version,
+        "pid": pid,
+        "uptime": uptime,
+        "memory_mb": memory_mb,
+        "domain": "ae0.ru",
+        "hostname": "mail.ae0.ru",
+        "webadmin_url": "https://mail.ae0.ru/admin",
+        "local_admin_url": "http://192.168.0.103:8080/admin",
+        "admin_user": "admin",
+        "recovery_pass": "Griha2901!"
+    }
+
+def get_mail_ports_status():
+    ports_to_check = [
+        {"port": 25, "proto": "SMTP", "name": "Входящий SMTP (обмен серверами)", "security": "STARTTLS", "critical": True},
+        {"port": 465, "proto": "SMTPS", "name": "Защищенный SMTP (отправка клиентами)", "security": "SSL/TLS", "critical": True},
+        {"port": 587, "proto": "Submission", "name": "Почтовая отправка с авторизацией", "security": "STARTTLS", "critical": True},
+        {"port": 143, "proto": "IMAP", "name": "IMAP получение писем", "security": "STARTTLS", "critical": True},
+        {"port": 993, "proto": "IMAPS", "name": "Защищенный IMAP (клиенты)", "security": "SSL/TLS", "critical": True},
+        {"port": 110, "proto": "POP3", "name": "POP3 получение писем", "security": "STARTTLS", "critical": False},
+        {"port": 995, "proto": "POP3S", "name": "Защищенный POP3", "security": "SSL/TLS", "critical": False},
+        {"port": 8080, "proto": "WebAdmin / JMAP", "name": "Веб-интерфейс & JMAP API (Nginx :443)", "security": "HTTP / HTTPS Прокси", "critical": True}
+    ]
+    _, ss_out, _ = run_host_cmd(["ss", "-tulpn"])
+    for p in ports_to_check:
+        port_num = p["port"]
+        p["listening"] = f":{port_num} " in ss_out or f":{port_num}\t" in ss_out
+    return ports_to_check
+
+def get_mail_dns_records(domain: str = "ae0.ru", mail_host: str = "mail.ae0.ru", ip: str = "109.95.164.190"):
+    return [
+        {
+            "type": "MX",
+            "name": "@",
+            "full_name": f"{domain}.",
+            "value": f"{mail_host}.",
+            "priority": "10",
+            "ttl": "3600",
+            "desc": "Главная почтовая запись домена, направляет входящую почту на ваш Stalwart сервер."
+        },
+        {
+            "type": "A",
+            "name": "mail",
+            "full_name": f"{mail_host}.",
+            "value": ip,
+            "priority": "-",
+            "ttl": "3600",
+            "desc": "A-запись поддомена mail, указывает на внешний IP вашего сервера."
+        },
+        {
+            "type": "TXT (SPF)",
+            "name": "@",
+            "full_name": f"{domain}.",
+            "value": f"v=spf1 mx a:{mail_host} ip4:{ip} ~all",
+            "priority": "-",
+            "ttl": "3600",
+            "desc": "SPF-запись (Sender Policy Framework): авторизует сервер для отправки почты."
+        },
+        {
+            "type": "TXT (DMARC)",
+            "name": "_dmarc",
+            "full_name": f"_dmarc.{domain}.",
+            "value": f"v=DMARC1; p=quarantine; sp=quarantine; rua=mailto:admin@{domain}; ruf=mailto:admin@{domain}; fo=1",
+            "priority": "-",
+            "ttl": "3600",
+            "desc": "DMARC-политика: защищает ваш домен от подделки (спуфинга) адреса отправителя."
+        },
+        {
+            "type": "TXT (DKIM)",
+            "name": "mail._domainkey",
+            "full_name": f"mail._domainkey.{domain}.",
+            "value": "Генерируется в Stalwart WebAdmin (Domains -> ae0.ru -> Signatures/DKIM)",
+            "priority": "-",
+            "ttl": "3600",
+            "desc": "Криптографическая подпись DKIM (автоматически создается в панели Stalwart)."
+        }
+    ]
+
+@app.get("/api/mail/stalwart/overview")
+async def get_mail_stalwart_overview(user: str = Depends(require_auth)):
+    status = get_stalwart_status()
+    ports = get_mail_ports_status()
+    dns = get_mail_dns_records()
+    
+    ssl_info = {
+        "exists": False,
+        "path": "/etc/letsencrypt/live/mail.ae0.ru/fullchain.pem",
+        "valid": False,
+        "expiry": None
+    }
+    cert_path = "/etc/letsencrypt/live/mail.ae0.ru/fullchain.pem"
+    if os.path.exists(cert_path) or os.path.exists(os.path.join(HOST_ROOT, cert_path.lstrip("/"))):
+        ssl_info["exists"] = True
+        code, out, _ = run_host_cmd(["openssl", "x509", "-in", cert_path, "-enddate", "-noout"])
+        if code == 0 and "notAfter=" in out:
+            ssl_info["expiry"] = out.replace("notAfter=", "").strip()
+            ssl_info["valid"] = True
+
+    return {
+        "status": status,
+        "ports": ports,
+        "dns": dns,
+        "ssl": ssl_info
+    }
+
+@app.post("/api/mail/stalwart/service")
+async def control_mail_stalwart_service(request: Request, user: str = Depends(require_auth)):
+    data = await request.json()
+    action = data.get("action", "").lower().strip()
+    if action not in ["start", "stop", "restart", "reload"]:
+        raise HTTPException(status_code=400, detail="Неверное действие для службы")
+    code, out, err = run_host_cmd(["systemctl", action, "stalwart"])
+    if code != 0:
+        raise HTTPException(status_code=500, detail=f"Ошибка выполнения {action}: {err or out}")
+    return {"status": True, "message": f"Команда {action} успешно выполнена для stalwart"}
+
+@app.get("/api/mail/stalwart/logs")
+async def get_mail_stalwart_logs(lines: int = 120, user: str = Depends(require_auth)):
+    code, out, err = run_host_cmd(["journalctl", "-u", "stalwart", "-n", str(min(lines, 300)), "--no-pager"])
+    return {"status": True, "logs": out or err or "Логи пусты"}
+
+
 # --- Interactive Web Terminal (xterm.js + PTY) ---
 @app.websocket("/ws/terminal")
 async def ws_terminal(websocket: WebSocket):

@@ -320,6 +320,7 @@ const app = {
       cron: 'Планировщик задач (Cron)',
       samba: 'Сетевые папки Samba (SMB / CIFS)',
       ftp: 'FTP Сервер (vsftpd)',
+      mail: 'Почтовый сервер Stalwart (ae0.ru)',
       services: 'Службы & Docker',
       processes: 'Процессы (htop)',
       files: 'Файловый менеджер',
@@ -339,6 +340,7 @@ const app = {
     if (tabName === 'cron') this.loadCronJobs();
     if (tabName === 'samba') this.loadSambaOverview();
     if (tabName === 'ftp') this.loadFtpOverview();
+    if (tabName === 'mail') this.loadMailOverview();
     if (tabName === 'services') this.loadServices();
     if (tabName === 'processes') this.loadProcesses();
     if (tabName === 'files') this.loadFiles(this.currentFilePath);
@@ -3159,6 +3161,157 @@ ${err.message}`);
       toast.style.transition = 'all 0.25s ease';
       setTimeout(() => toast.remove(), 250);
     }, 4000);
+  },
+
+  // --- Stalwart Mail Server (ae0.ru) ---
+  isMailRunning: false,
+
+  async loadMailOverview() {
+    try {
+      const res = await fetch('/api/mail/stalwart/overview');
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      
+      const st = data.status || {};
+      this.isMailRunning = !!st.active;
+
+      // Update Top Cards
+      const statusBadge = document.getElementById('mail-status-badge');
+      if (statusBadge) {
+        if (st.active) {
+          statusBadge.innerHTML = '<span class="badge badge-emerald">Запущен (Active)</span>';
+        } else {
+          statusBadge.innerHTML = '<span class="badge badge-rose">Остановлен</span>';
+        }
+      }
+
+      const verText = document.getElementById('mail-version-text');
+      if (verText) verText.innerText = st.version || 'v1.1.1';
+
+      const pidText = document.getElementById('mail-pid-text');
+      if (pidText) pidText.innerText = st.pid || '-';
+
+      const domainText = document.getElementById('mail-domain-text');
+      if (domainText) domainText.innerText = st.domain || 'ae0.ru';
+
+      const userText = document.getElementById('mail-admin-user');
+      if (userText) userText.innerText = st.admin_user || 'admin';
+
+      const passText = document.getElementById('mail-admin-pass');
+      if (passText) passText.innerText = st.recovery_pass || 'Griha2901!';
+
+      const memText = document.getElementById('mail-memory-text');
+      if (memText) memText.innerText = st.memory_mb || '18.0';
+
+      const toggleBtn = document.getElementById('btn-mail-toggle');
+      if (toggleBtn) {
+        if (st.active) {
+          toggleBtn.innerHTML = '⏹️ Остановить';
+          toggleBtn.className = 'btn btn-secondary btn-sm';
+        } else {
+          toggleBtn.innerHTML = '▶️ Запустить';
+          toggleBtn.className = 'btn btn-primary btn-sm';
+        }
+      }
+
+      // Render Ports Matrix
+      const portsTbody = document.getElementById('mail-ports-tbody');
+      if (portsTbody && Array.isArray(data.ports)) {
+        portsTbody.innerHTML = data.ports.map(p => {
+          const isListen = p.listening;
+          const badge = isListen
+            ? '<span class="badge badge-emerald"><span class="badge-dot" style="background:#10b981;display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;"></span>Слушает</span>'
+            : '<span class="badge badge-amber"><span class="badge-dot" style="background:#f59e0b;display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px;"></span>Ожидание</span>';
+          return `
+            <tr>
+              <td><strong>${p.proto}</strong></td>
+              <td><code>${p.port}/tcp</code></td>
+              <td><span class="badge badge-cyan" style="font-size:0.75rem;">${p.security}</span></td>
+              <td style="color: var(--text-muted); font-size: 0.85rem;">${p.name}</td>
+              <td style="text-align: right;">${badge}</td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      // Render DNS Records
+      const dnsTbody = document.getElementById('mail-dns-tbody');
+      if (dnsTbody && Array.isArray(data.dns)) {
+        dnsTbody.innerHTML = data.dns.map(d => {
+          const escapedVal = (d.value || '').replace(/'/g, "\\'");
+          return `
+            <tr>
+              <td><span class="badge badge-cyan" style="font-weight:700;">${d.type}</span></td>
+              <td><code>${d.name}</code></td>
+              <td style="font-family: monospace; font-size: 0.82rem; word-break: break-all; max-width: 320px;">
+                <span class="text-select">${d.value}</span>
+              </td>
+              <td><code>${d.priority}</code></td>
+              <td style="font-size: 0.8rem; color: var(--text-muted);">${d.desc}</td>
+              <td style="text-align: right;">
+                <button class="btn btn-secondary btn-sm" style="padding: 2px 8px; font-size: 0.75rem;" onclick="app.copyDnsRecord('${escapedVal}', this)">
+                  Копировать
+                </button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      }
+
+      // Load Logs
+      this.loadMailLogs();
+    } catch (e) {
+      this.showToast(`Ошибка загрузки данных Stalwart: ${e.message}`, 'error');
+    }
+  },
+
+  async controlMailService(action) {
+    try {
+      this.showToast(`Выполняется: ${action} stalwart...`, 'info');
+      const res = await fetch('/api/mail/stalwart/service', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || 'Ошибка');
+      this.showToast(data.message || `Служба ${action} успешно`, 'success');
+      setTimeout(() => this.loadMailOverview(), 1500);
+    } catch (e) {
+      this.showToast(`Ошибка управления службой: ${e.message}`, 'error');
+    }
+  },
+
+  toggleMailService() {
+    const action = this.isMailRunning ? 'stop' : 'start';
+    this.controlMailService(action);
+  },
+
+  async loadMailLogs() {
+    const viewer = document.getElementById('mail-logs-viewer');
+    if (!viewer) return;
+    try {
+      const res = await fetch('/api/mail/stalwart/logs?lines=100');
+      const data = await res.json();
+      viewer.innerText = data.logs || 'Логи пусты';
+      viewer.scrollTop = viewer.scrollHeight;
+    } catch (e) {
+      viewer.innerText = `Ошибка загрузки логов: ${e.message}`;
+    }
+  },
+
+  copyDnsRecord(val, btn) {
+    navigator.clipboard.writeText(val).then(() => {
+      const orig = btn.innerText;
+      btn.innerText = '✓ Скопировано!';
+      btn.className = 'btn btn-primary btn-sm';
+      setTimeout(() => {
+        btn.innerText = orig;
+        btn.className = 'btn btn-secondary btn-sm';
+      }, 1500);
+    }).catch(() => {
+      this.copyToClipboard(val);
+    });
   },
 
   // Helpers
