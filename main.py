@@ -2439,8 +2439,8 @@ def get_stalwart_status():
         "hostname": "mail.ae0.ru",
         "webadmin_url": "https://mail.ae0.ru/admin",
         "local_admin_url": "http://192.168.0.103:8080/admin",
-        "admin_user": "admin",
-        "recovery_pass": "Griha2901!"
+        "admin_user": "admin@ae0.ru",
+        "recovery_pass": "Fp7qbg3qCCD0OF0m"
     }
 
 def get_mail_ports_status():
@@ -2548,7 +2548,11 @@ async def control_mail_stalwart_service(request: Request, user: str = Depends(re
     return {"status": True, "message": f"Команда {action} успешно выполнена для stalwart"}
 
 @app.get("/api/mail/stalwart/logs")
-async def get_mail_stalwart_logs(lines: int = 120, user: str = Depends(require_auth)):
+async def get_mail_stalwart_logs(lines: int = 150, user: str = Depends(require_auth)):
+    # Read from /var/log/stalwart/ if available for rich SMTP/IMAP events
+    code, out, _ = run_host_cmd(["sh", "-c", f"tail -n {min(lines, 300)} /var/log/stalwart/stalwart.log* 2>/dev/null"])
+    if code == 0 and out.strip():
+        return {"status": True, "logs": out}
     code, out, err = run_host_cmd(["journalctl", "-u", "stalwart", "-n", str(min(lines, 300)), "--no-pager"])
     return {"status": True, "logs": out or err or "Логи пусты"}
 
