@@ -1141,6 +1141,95 @@
             </div>
           </div>
 
+          <!-- Client Connection Settings Card -->
+          <div class="card" style="margin-bottom: 20px;">
+            <div class="card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;">
+              <div>
+                <div class="card-title">📱 Настройки для почтовых клиентов (Thunderbird, Outlook, Apple Mail, Android)</div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 4px;">
+                  Используйте эти параметры при подключении любого созданного ящика (<code>test1@ae0.ru</code>, <code>admin@ae0.ru</code> и др.)
+                </div>
+              </div>
+              <span class="badge badge-emerald" style="font-size: 0.75rem;">Единый хост: mail.ae0.ru</span>
+            </div>
+            <div style="padding: 16px 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px;">
+              <!-- IMAP Settings -->
+              <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 14px 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-weight: 700; color: var(--accent-cyan); font-size: 0.95rem;">📥 Входящая почта (IMAP)</span>
+                  <span class="badge badge-cyan" style="font-size: 0.7rem;">Рекомендуется</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">Сервер:</span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <code>mail.ae0.ru</code>
+                      <button class="btn btn-secondary btn-sm" style="padding: 1px 6px; font-size: 0.7rem;" onclick="app.copyToClipboard('mail.ae0.ru')">Копировать</button>
+                    </div>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">Порт:</span>
+                    <span><strong style="color: var(--text-main);">993</strong> (SSL/TLS) или 143 (STARTTLS)</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">Логин:</span>
+                    <span>Полный email (<code>test1@ae0.ru</code>)</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">Пароль:</span>
+                    <span>Пароль от созданного ящика</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SMTP Settings -->
+              <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 14px 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-weight: 700; color: #34d399; font-size: 0.95rem;">📤 Исходящая почта (SMTP)</span>
+                  <span class="badge badge-emerald" style="font-size: 0.7rem;">Отправка писем</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">Сервер:</span>
+                    <div style="display: flex; align-items: center; gap: 6px;">
+                      <code>mail.ae0.ru</code>
+                      <button class="btn btn-secondary btn-sm" style="padding: 1px 6px; font-size: 0.7rem;" onclick="app.copyToClipboard('mail.ae0.ru')">Копировать</button>
+                    </div>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">Порт:</span>
+                    <span><strong style="color: var(--text-main);">465</strong> (SSL/TLS) или <strong>587</strong> (STARTTLS)</span>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">Авторизация:</span>
+                    <strong style="color: #34d399;">Обязательно включена</strong>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">Логин / Пароль:</span>
+                    <span>Те же, что и для входящей почты</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- POP3 & Autodiscovery Info -->
+              <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 14px 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                  <span style="font-weight: 700; color: #f59e0b; font-size: 0.95rem;">⚡ Альтернатива: POP3 & Автопоиск</span>
+                  <span class="badge badge-amber" style="font-size: 0.7rem;">POP3 :995</span>
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span style="color: var(--text-muted);">POP3 Сервер:</span>
+                    <code>mail.ae0.ru</code> (порт 995, SSL/TLS)
+                  </div>
+                  <div style="margin-top: 4px; color: var(--text-muted); line-height: 1.45; font-size: 0.82rem;">
+                    💡 <strong>Автонастройка:</strong> В большинстве клиентов (Thunderbird, Apple Mail, Spark) достаточно ввести только email и пароль — настройки определятся сами!
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- DNS Records Card -->
           <div class="card" style="margin-bottom: 20px;">
             <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
